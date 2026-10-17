@@ -24,12 +24,15 @@
  */
 
 #import <ScreenSaver/ScreenSaver.h>
+#import <MetalKit/MetalKit.h>
 #import "Hyperspace.h"
+#import "HSRenderer.h"
 #import "util/rsTimer.h"
 
-@interface HyperspaceView : ScreenSaverView 
+@interface HyperspaceView : ScreenSaverView <MTKViewDelegate>
 {
-	NSOpenGLView *lView;
+	MTKView *lView;
+	HSRenderer *lRenderer;
 	HyperspaceSaverSettings lSettings;
 	BOOL lMainScreen;
 	BOOL lMainScreenOnly;

@@ -27,8 +27,6 @@
 #import "Hyperspace.h"
 #import "flare.h"
 #import <sys/time.h>
-#import <OpenGL/OpenGL.h>
-#import "Hyperspace/extensions.h"
 
 @interface HyperspaceView (Private)
 - (void)readDefaults:(ScreenSaverDefaults *)inDefaults;
@@ -54,35 +52,32 @@
 		lMainScreenOnly = [defaults boolForKey:@"MainScreenOnly"];
 		if (lMainScreen || !lMainScreenOnly)
 		{
-			NSOpenGLPixelFormatAttribute attribs[] = 
+			MTKView *candidateView = [[MTKView alloc] initWithFrame:NSZeroRect];
+			HSRenderer *renderer = new HSRenderer;
+
+			if (renderer->attachToView(candidateView))
 			{
-				NSOpenGLPFAAccelerated,
-				NSOpenGLPFAColorSize, (NSOpenGLPixelFormatAttribute)32,
-				NSOpenGLPFADoubleBuffer,
-				NSOpenGLPFAMinimumPolicy,
-				NSOpenGLPFAAllowOfflineRenderers,
-				(NSOpenGLPixelFormatAttribute)0
-			};
-            NSOpenGLPixelFormat *format = [[NSOpenGLPixelFormat alloc] initWithAttributes:attribs];
-            
-            if (format)
-            {
-                lView = [[NSOpenGLView alloc] initWithFrame:NSZeroRect pixelFormat:format];
-				lView.wantsBestResolutionOpenGLSurface = YES;
-                [self addSubview:lView];
-				
-                lSettings.frameTime = 0;
-                
-				[[lView openGLContext] makeCurrentContext];	// must do this before RSSShadersSupported() will work
+				lView = candidateView;
+				lRenderer = renderer;
+				lView.delegate = self;
+				[self addSubview:lView];
+
+				lSettings.frameTime = 0;
+				lSettings.renderer = lRenderer;
+
 				setDefaults(&lSettings);
-                if ([defaults objectForKey:@"Speed"])
-                {
-                    [self readDefaults:defaults];
-                }
-                
+				if ([defaults objectForKey:@"Speed"])
+				{
+					[self readDefaults:defaults];
+				}
+
 				self.animationTimeInterval = 1.0/60.0;
 				lSettings.first = 1;
-            }
+			}
+			else
+			{
+				delete renderer;
+			}
 		}
     }
     return self;
@@ -94,15 +89,12 @@
 	[super setFrameSize:size];
 	if (lView)
 		[lView setFrameSize:size];
-	
-	if (lView.wantsBestResolutionOpenGLSurface)	// on Lion & later, if we're using a best resolution surface, then call glViewport() with the appropriate width and height for the backing
-	{
-		NSRect newBounds = [self convertRectToBacking:self.bounds];
-		
-		reshape(int(newBounds.size.width), int(newBounds.size.height), &lSettings);
-	}
-	else
-		reshape(int(size.width), int(size.height), &lSettings);
+}
+
+
+- (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size
+{
+	reshape(int(size.width), int(size.height), &lSettings);
 }
 
 
@@ -119,25 +111,13 @@
 - (void)startAnimation
 {
     [super startAnimation];
-	
+
 	if (lIsConfiguring == NO && lView)
     {
         if (lMainScreen || !lMainScreenOnly)
         {
-			GLint interval = 1;
-            
-            [self lockFocus];
-            [[lView openGLContext] makeCurrentContext];
-            
-            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            glFlush();
-            CGLSetParameter(CGLGetCurrentContext(), kCGLCPSwapInterval, &interval);	// don't allow screen tearing
-            [[lView openGLContext] flushBuffer];
-            
             initSaver(&lSettings);
 			gettimeofday(&timer.prev_tv, NULL);	// reset the timer
-			[self unlockFocus];
         }
     }
 }
@@ -146,12 +126,11 @@
 - (void)stopAnimation
 {
     [super stopAnimation];
-	
+
 	if (lIsConfiguring == NO && lView)
     {
         if (lMainScreen || !lMainScreenOnly)
 		{
-			[[lView openGLContext] makeCurrentContext];
 			cleanUp(&lSettings);
             lSettings.frameTime=0;
 		}
@@ -163,9 +142,9 @@
 {
     [[NSColor blackColor] set];
     NSRectFill(rect);
-    
+
     if (lView == nil)
-    {    
+    {
 		if (lMainScreen || !lMainScreenOnly)
         {
             NSRect tFrame=[self frame];
@@ -173,19 +152,19 @@
             NSDictionary * tAttributes;
             NSString * tString;
             NSMutableParagraphStyle * tParagraphStyle;
-            
+
             tParagraphStyle=[[NSParagraphStyle defaultParagraphStyle] mutableCopy];
-            [tParagraphStyle setAlignment:NSCenterTextAlignment];
-            
+            [tParagraphStyle setAlignment:NSTextAlignmentCenter];
+
             tAttributes = [NSDictionary dictionaryWithObjectsAndKeys:[NSFont systemFontOfSize:[NSFont systemFontSize]],NSFontAttributeName,[NSColor whiteColor],NSForegroundColorAttributeName,tParagraphStyle,NSParagraphStyleAttributeName,nil];
-            
+
             tString=NSLocalizedStringFromTableInBundle(@"Minimum OpenGL requirements\rfor this Screen Effect\rnot available\ron your graphic card.",@"Localizable",[NSBundle bundleForClass:[self class]],@"No comment");
-            
+
             tStringFrame.origin=NSZeroPoint;
             tStringFrame.size=[tString sizeWithAttributes:tAttributes];
-            
+
             tStringFrame=SSCenteredRectInRect(tStringFrame,tFrame);
-            
+
             [tString drawInRect:tStringFrame withAttributes:tAttributes];
         }
     }
@@ -200,13 +179,17 @@
         {
 			lSettings.frameTime = timer.tick();
 			if (lSettings.readyToDraw)
-			{
-				[[lView openGLContext] makeCurrentContext];
-				draw(&lSettings);
-				[[lView openGLContext] flushBuffer];
-			}
+				[lView draw];
         }
     }
+}
+
+
+- (void)drawInMTKView:(MTKView *)view
+{
+	lRenderer->beginFrame();
+	draw(&lSettings);
+	lRenderer->endFrame();
 }
 
 

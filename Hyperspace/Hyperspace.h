@@ -11,6 +11,7 @@ class tunnel;
 class goo;
 class stretchedParticle;
 class starBurst;
+class HSRenderer;
 
 #define FLARESIZE 64
 
@@ -29,6 +30,7 @@ typedef struct HyperspaceSaverSettings
 	bool kStatistics;
 	
 	// Additional globals:
+	HSRenderer *renderer;
 	float frameTime;
 	bool doingPreview;
 	bool readyToDraw;

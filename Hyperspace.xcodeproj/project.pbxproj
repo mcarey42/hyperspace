@@ -16,6 +16,9 @@
 		B41566FF30833944008197CF /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B41566FE30833944008197CF /* Localizable.xcstrings */; };
 		B415670130833946008197CF /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B415670030833946008197CF /* InfoPlist.xcstrings */; };
 		B415670330833963008197CF /* ConfigureSheet.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B415670230833963008197CF /* ConfigureSheet.xcstrings */; };
+		B41567163083C99C008197CF /* HSRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = B41567153083C99C008197CF /* HSRenderer.h */; };
+		B41567183083C9AA008197CF /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = B41567173083C9AA008197CF /* Shaders.metal */; };
+		B415671A3083CA91008197CF /* HSRenderer.mm in Sources */ = {isa = PBXBuildFile; fileRef = B41567193083CA91008197CF /* HSRenderer.mm */; };
 		E02D5129247B9108008561D1 /* ConfigureSheet.xib in Resources */ = {isa = PBXBuildFile; fileRef = E02D512B247B9108008561D1 /* ConfigureSheet.xib */; };
 		E04FD81D17DC286F00CDEC91 /* thumbnail.png in Resources */ = {isa = PBXBuildFile; fileRef = E04FD81C17DC286F00CDEC91 /* thumbnail.png */; };
 		E0657D0611E1261800B061F8 /* rsMath.h in Headers */ = {isa = PBXBuildFile; fileRef = E0657CFC11E1261800B061F8 /* rsMath.h */; };
@@ -95,6 +98,9 @@
 		B415670030833946008197CF /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		B415670230833963008197CF /* ConfigureSheet.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = ConfigureSheet.xcstrings; sourceTree = "<group>"; };
 		B415670830833A93008197CF /* HyperspaceHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HyperspaceHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B41567153083C99C008197CF /* HSRenderer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HSRenderer.h; sourceTree = "<group>"; };
+		B41567173083C9AA008197CF /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
+		B41567193083CA91008197CF /* HSRenderer.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = HSRenderer.mm; sourceTree = "<group>"; };
 		E02D512A247B9108008561D1 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/ConfigureSheet.xib; sourceTree = "<group>"; };
 		E04FD81C17DC286F00CDEC91 /* thumbnail.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = thumbnail.png; sourceTree = "<group>"; };
 		E0657CFC11E1261800B061F8 /* rsMath.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = rsMath.h; sourceTree = "<group>"; };
@@ -308,6 +314,9 @@
 				E0CDA06109A8E5C00004FDE6 /* tunnel.cpp */,
 				E0CDA08009A8E66E0004FDE6 /* wavyNormalCubeMaps.h */,
 				E0CDA05A09A8E5C00004FDE6 /* wavyNormalCubeMaps.cpp */,
+				B41567153083C99C008197CF /* HSRenderer.h */,
+				B41567173083C9AA008197CF /* Shaders.metal */,
+				B41567193083CA91008197CF /* HSRenderer.mm */,
 			);
 			path = Hyperspace;
 			sourceTree = "<group>";
@@ -401,6 +410,7 @@
 				E0CDA0C009A8E96B0004FDE6 /* rsText.h in Headers */,
 				E0CDA21209A900520004FDE6 /* Rgbhsl.h in Headers */,
 				E0AA3C6411E11EFF00F84B8B /* extensions.h in Headers */,
+				B41567163083C99C008197CF /* HSRenderer.h in Headers */,
 				E0AA3C9311E122EE00F84B8B /* impCapsule.h in Headers */,
 				E0AA3C9411E122EE00F84B8B /* impCrawlPoint.h in Headers */,
 				E0AA3C9611E122EE00F84B8B /* impCubeTables.h in Headers */,
@@ -527,6 +537,7 @@
 		8D255ACB0486D3F9007BF209 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				B41567183083C9AA008197CF /* Shaders.metal in Sources */,
 				8D255ACC0486D3F9007BF209 /* HyperspaceView.mm in Sources */,
 				E0CDA06209A8E5C00004FDE6 /* starBurst.cpp in Sources */,
 				E0CDA06309A8E5C00004FDE6 /* stretchedParticle.cpp in Sources */,
@@ -551,6 +562,7 @@
 				E0AA3CA311E122EE00F84B8B /* impSphere.cpp in Sources */,
 				E0AA3CA511E122EE00F84B8B /* impSurface.cpp in Sources */,
 				E0AA3CA711E122EE00F84B8B /* impTorus.cpp in Sources */,
+				B415671A3083CA91008197CF /* HSRenderer.mm in Sources */,
 				E0657D0711E1261800B061F8 /* rsMatrix.cpp in Sources */,
 				E0657D0911E1261800B061F8 /* rsQuat.cpp in Sources */,
 				E0657D0C11E1261800B061F8 /* rsVec.cpp in Sources */,
@@ -738,6 +750,14 @@
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					Metal,
+					"-framework",
+					MetalKit,
+					"-framework",
+					QuartzCore,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.reallyslick.Hyperspace;
 				PRODUCT_NAME = Hyperspace;
 				SDKROOT = macosx;
@@ -770,6 +790,14 @@
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					Metal,
+					"-framework",
+					MetalKit,
+					"-framework",
+					QuartzCore,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.reallyslick.Hyperspace;
 				PRODUCT_NAME = Hyperspace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
