@@ -54,6 +54,7 @@
 #include <Hyperspace/nebulamap.h>
 #include <Hyperspace/shaders.h>
 #include "Hyperspace.h"
+#include "HSRenderer.h"
 
 //#include <fstream>
 //std::ofstream outfile;
@@ -107,9 +108,73 @@ starBurst* theStarBurst;
 
 
 void draw(HyperspaceSaverSettings *inSettings){
-	// Stubbed for the Phase 2.1 MTKView/Metal-4 milestone. The camera/effects
-	// pipeline is ported incrementally in Phase 2.2-2.5; HyperspaceView brackets
-	// this call with HSRenderer::beginFrame()/endFrame(), which clears to black.
+	// Camera movements
+	static float camHeading[3] = {0.0f, 0.0f, 0.0f};  // current, target, and last
+	static int changeCamHeading = 1;
+	static float camHeadingChangeTime[2] = {20.0f, 0.0f};  // total, elapsed
+	static float camRoll[3] = {0.0f, 0.0f, 0.0f};  // current, target, and last
+	static int changeCamRoll = 1;
+	static float camRollChangeTime[2] = {1.0f, 0.0f};  // total, elapsed
+	camHeadingChangeTime[1] += inSettings->frameTime;
+	if(camHeadingChangeTime[1] >= camHeadingChangeTime[0]){  // Choose new direction
+		camHeadingChangeTime[0] = rsRandf(15.0f) + 5.0f;
+		camHeadingChangeTime[1] = 0.0f;
+		camHeading[2] = camHeading[1];  // last = target
+		if(changeCamHeading){
+			// face forward most of the time
+			if(rsRandi(6))
+				camHeading[1] = 0.0f;
+			// face backward the rest of the time
+			else if(rsRandi(2))
+				camHeading[1] = RS_PI;
+			else
+				camHeading[1] = -RS_PI;
+			changeCamHeading = 0;
+		}
+		else
+			changeCamHeading = 1;
+	}
+	float t = camHeadingChangeTime[1] / camHeadingChangeTime[0];
+	t = 0.5f * (1.0f - cosf(RS_PI * t));
+	camHeading[0] = camHeading[1] * t + camHeading[2] * (1.0f - t);
+	camRollChangeTime[1] += inSettings->frameTime;
+	if(camRollChangeTime[1] >= camRollChangeTime[0]){  // Choose new roll angle
+		camRollChangeTime[0] = rsRandf(5.0f) + 10.0f;
+		camRollChangeTime[1] = 0.0f;
+		camRoll[2] = camRoll[1];  // last = target
+		if(changeCamRoll){
+			camRoll[1] = rsRandf(RS_PIx2*2) - RS_PIx2;
+			changeCamRoll = 0;
+		}
+		else
+			changeCamRoll = 1;
+	}
+	t = camRollChangeTime[1] / camRollChangeTime[0];
+	t = 0.5f * (1.0f - cosf(RS_PI * t));
+	camRoll[0] = camRoll[1] * t + camRoll[2] * (1.0f - t);
+
+	static float pathDir[3] = {0.0f, 0.0f, -1.0f};
+	inSettings->thePath->moveAlongPath(float(inSettings->dSpeed) * inSettings->frameTime * 0.04f);
+	inSettings->thePath->update(inSettings->frameTime);
+	inSettings->thePath->getPoint(inSettings->dDepth + 2, inSettings->thePath->step, inSettings->camPos);
+	inSettings->thePath->getBaseDirection(inSettings->dDepth + 2, inSettings->thePath->step, pathDir);
+	float pathAngle = atan2f(-pathDir[0], -pathDir[2]);
+
+	// Build the camera matrices through HSRenderer's modelview stack, the direct
+	// replacement for GL_MODELVIEW (same loadIdentity/rotate/translate/readback
+	// sequence the original glRotatef/glTranslatef/glGetFloatv|Doublev code used).
+	inSettings->renderer->loadIdentity();
+	inSettings->renderer->rotate((pathAngle + camHeading[0]) * RS_RAD2DEG, 0, 1, 0);
+	inSettings->renderer->rotate(camRoll[0] * RS_RAD2DEG, 0, 0, 1);
+	inSettings->renderer->getCurrentMatrix(inSettings->billboardMat);
+	inSettings->renderer->loadIdentity();
+	inSettings->renderer->rotate(-camRoll[0] * RS_RAD2DEG, 0, 0, 1);
+	inSettings->renderer->rotate((-pathAngle - camHeading[0]) * RS_RAD2DEG, 0, 1, 0);
+	inSettings->renderer->translate(inSettings->camPos[0]*-1, inSettings->camPos[1]*-1, inSettings->camPos[2]*-1);
+	inSettings->renderer->getCurrentMatrix(inSettings->modelMat);
+	inSettings->unroll = camRoll[0] * RS_RAD2DEG;
+
+	// TODO(Phase 2.3-2.5): goo update, and stars/flare/sun/tunnel/starburst rendering via HSRenderer.
 }
 
 
@@ -160,7 +225,9 @@ void reshape(int width, int height, HyperspaceSaverSettings *inSettings){
 	inSettings->viewport[1] = 0;
 	inSettings->viewport[2] = width;
 	inSettings->viewport[3] = height;
-	// TODO(Phase 2.2): rebuild the projection matrix via HSRenderer::perspective.
+
+	HSRenderer::perspective(float(inSettings->dFov), inSettings->aspectRatio, 0.001f, 200.0f, inSettings->projMat);
+	inSettings->renderer->setProjectionMatrix(inSettings->projMat);
 }
 
 
@@ -196,13 +263,21 @@ void initSaver(HyperspaceSaverSettings *inSettings){
 	inSettings->camPos[2] = 0.0f;
 	inSettings->numAnimTexFrames = 20;
 	inSettings->whichTexture = 0;
-	// TODO(Phase 2.2-2.5): recreate flares/path/tunnel/goo/stars/nebula/fog via HSRenderer.
+
+	inSettings->thePath = new splinePath((inSettings->dDepth * 2) + 6);
+
+	// To avoid popping, depth, which will be used for fogging, is set to
+	// dDepth * goo grid size - size of one goo cubelet
+	inSettings->depth = float(inSettings->dDepth) * 2.0f - 2.0f / float(inSettings->dResolution);
+
+	// TODO(Phase 2.3-2.5): recreate flares/tunnel/goo/stars/starburst/nebula/fog via HSRenderer.
 	inSettings->readyToDraw = 1;
 }
 
 
 void cleanUp(HyperspaceSaverSettings *inSettings){
-	// TODO(Phase 2.2-2.5): free effect objects once they're reallocated in initSaver again.
+	// TODO(Phase 2.3-2.5): free effect objects once they're reallocated in initSaver again.
+	delete inSettings->thePath;
 	inSettings->first = 1;
 }
 //#endif

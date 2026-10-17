@@ -64,10 +64,10 @@ public:
 	// Fog applies uniformly to every pipeline's fragment shader.
 	void setFog(float start, float end, bool enabled);
 
-	// Camera / projection, mirroring the old gluPerspective + glGetDoublev(GL_MODELVIEW_MATRIX) flow.
-	// modelMat/projMat are column-major 4x4 (OpenGL convention) so the math ported from
-	// the original camera code is bit-for-bit the same.
-	void setCamera(const double modelMat[16], const double projMat[16]);
+	// Projection matrix (column-major 4x4, OpenGL convention), separate from the
+	// modelview stack below, exactly like GL's separate GL_PROJECTION register.
+	void setProjectionMatrix(const double projMat[16]);
+	void setProjectionMatrix(const float projMat[16]);
 	static void perspective(float fovyDegrees, float aspect, float zNear, float zFar, double outMat[16]);
 	static void ortho2D(float left, float right, float bottom, float top, double outMat[16]);
 	// gluProject equivalent: object space -> window coordinates.
@@ -75,15 +75,21 @@ public:
 						 const double modelMat[16], const double projMat[16], const int viewport[4],
 						 double *winX, double *winY, double *winZ);
 
-	// CPU-side matrix stack. hsVertex* transforms by (projection * modelview * stack-top)
-	// before writing into the current pipeline's dynamic vertex buffer, exactly like the
-	// old gl matrix stack + immediate mode did.
+	// CPU-side modelview matrix stack, the exact GL replacement: the camera is built
+	// with loadIdentity/rotate/translate just like the old GL_MODELVIEW register was,
+	// then getCurrentMatrix() reads it back for gluProject-style calls, and per-object
+	// drawing pushes/pops on top of it precisely like the old immediate-mode code did.
+	// hsVertex* transforms by (projection * stack-top) before writing into the current
+	// pipeline's dynamic vertex buffer.
 	void matrixPush();
 	void matrixPop();
 	void loadIdentity();
 	void translate(float x, float y, float z);
 	void rotate(float degrees, float x, float y, float z);
 	void scale(float x, float y, float z);
+	void multMatrixf(const float m[16]);
+	void getCurrentMatrix(double out[16]) const;
+	void getCurrentMatrix(float out[16]) const;
 
 	// Immediate-mode emulation. begin/vertex*/end batches into the active pipeline's
 	// per-frame dynamic vertex buffer and flushes with one draw call per end().
