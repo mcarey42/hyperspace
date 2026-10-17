@@ -1,0 +1,558 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "5.title" : {
+      "comment" : "Class = \"NSWindow\"; title = \"Window\"; ObjectID = \"5\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Window"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Window"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Window"
+          }
+        }
+      }
+    },
+    "61.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"Hyperspace\"; ObjectID = \"61\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hyperspace"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hyperspace"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hyperspace"
+          }
+        }
+      }
+    },
+    "62.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"(don't localize)\"; ObjectID = \"62\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(don't localize)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(don't localize)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(don't localize)"
+          }
+        }
+      }
+    },
+    "63.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"Copyright © 2005-2010 Terence M. Welsh.\"; ObjectID = \"63\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2005-2010 Terence M. Welsh."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2005-2010 Terence M. Welsh."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2005-2010 Terence M. Welsh."
+          }
+        }
+      }
+    },
+    "64.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"macOS port by Nick Zitzmann\"; ObjectID = \"64\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS-Portierung von Nick Zitzmann"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS port by Nick Zitzmann"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "port macOS par Nick Zitzmann"
+          }
+        }
+      }
+    },
+    "65.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"Resolution of geometry:\"; ObjectID = \"65\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geometrische Verteilung:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resolution of geometry:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Résolution de géometrie :"
+          }
+        }
+      }
+    },
+    "66.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"Number of stars:\"; ObjectID = \"66\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzahl der Sterne:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Number of stars:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre d'étoiles :"
+          }
+        }
+      }
+    },
+    "67.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"Speed:\"; ObjectID = \"67\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geschwindigkeit:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speed:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vitesse :"
+          }
+        }
+      }
+    },
+    "68.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"Size of stars:\"; ObjectID = \"68\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Größe der Sterne:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Size of stars:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taille des étoiles :"
+          }
+        }
+      }
+    },
+    "69.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"View depth:\"; ObjectID = \"69\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sichtweite:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View depth:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profondeur du champ :"
+          }
+        }
+      }
+    },
+    "70.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"Field of view:\"; ObjectID = \"70\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sichtfeld:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Field of view:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Champ de vision :"
+          }
+        }
+      }
+    },
+    "71.title" : {
+      "comment" : "Class = \"NSButtonCell\"; title = \"Enable pixel & vertex shaders (if available)\"; ObjectID = \"71\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pixel- & Vertexshader aktivieren (wenn verfügbar)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable pixel & vertex shaders (if available)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activer les ombres des pixels et des vertex (si disponible)"
+          }
+        }
+      }
+    },
+    "72.title" : {
+      "comment" : "Class = \"NSButtonCell\"; title = \"Main screen only\"; ObjectID = \"72\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur auf Hauptbildschirm zeigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Main screen only"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Écran principal uniquement"
+          }
+        }
+      }
+    },
+    "73.title" : {
+      "comment" : "Class = \"NSButtonCell\"; title = \"Close\"; ObjectID = \"73\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fermer"
+          }
+        }
+      }
+    },
+    "74.title" : {
+      "comment" : "Class = \"NSButtonCell\"; title = \"Defaults\"; ObjectID = \"74\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellungen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Defaults"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réglages par défaut"
+          }
+        }
+      }
+    },
+    "76.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"76\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        }
+      }
+    },
+    "79.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"79\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        }
+      }
+    },
+    "80.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"80\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        }
+      }
+    },
+    "81.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"81\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        }
+      }
+    },
+    "82.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"82\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        }
+      }
+    },
+    "83.title" : {
+      "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"83\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "#"
+          }
+        }
+      }
+    },
+    "88.title" : {
+      "comment" : "Class = \"NSButtonCell\"; title = \"Enable the nebula\"; ObjectID = \"88\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nebelfleck aktivieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable the nebula"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activer la nébuleuse"
+          }
+        }
+      }
+    },
+    "90.title" : {
+      "comment" : "Class = \"NSButtonCell\"; title = \"Enable wormholes\"; ObjectID = \"90\";",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wurmlock aktivieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable wormholes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activer trous de ver"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

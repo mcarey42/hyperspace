@@ -1,0 +1,29 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Minimum OpenGL requirements\rfor this Screen Effect\rnot available\ron your graphic card." : {
+      "comment" : "No comment",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die erforderlichen OpenGL-Voraussetzungen\r für diesen Effekt\r werden von Ihrer Grafikkarte\r nicht unterstützt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimum OpenGL requirements\rfor this Screen Effect\rnot available\ron your graphic card."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimum OpenGL requis\rpour cet économiseur\rnon disponible\rsur votre carte graphique."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

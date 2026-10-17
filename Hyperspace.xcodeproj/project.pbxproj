@@ -3,19 +3,20 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 46;
+	objectVersion = 110;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		8D255AC70486D3F9007BF209 /* Hyperspace_Prefix.pch in Headers */ = {isa = PBXBuildFile; fileRef = 32DBCFA80370C50100C91783 /* Hyperspace_Prefix.pch */; };
 		8D255AC80486D3F9007BF209 /* HyperspaceView.h in Headers */ = {isa = PBXBuildFile; fileRef = F50079790118B23001CA0E54 /* HyperspaceView.h */; };
-		8D255ACA0486D3F9007BF209 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C167DFE841241C02AAC07 /* InfoPlist.strings */; };
 		8D255ACC0486D3F9007BF209 /* HyperspaceView.mm in Sources */ = {isa = PBXBuildFile; fileRef = F500797A0118B23001CA0E54 /* HyperspaceView.mm */; };
 		8D255ACE0486D3F9007BF209 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7ADFEA557BF11CA2CBB /* Cocoa.framework */; };
 		8D255ACF0486D3F9007BF209 /* ScreenSaver.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 06F27B2DFFEEEFEF11CA0E56 /* ScreenSaver.framework */; };
+		B41566FD30833884008197CF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B41566FC30833884008197CF /* Assets.xcassets */; };
+		B41566FF30833944008197CF /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B41566FE30833944008197CF /* Localizable.xcstrings */; };
+		B415670130833946008197CF /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B415670030833946008197CF /* InfoPlist.xcstrings */; };
+		B415670330833963008197CF /* ConfigureSheet.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B415670230833963008197CF /* ConfigureSheet.xcstrings */; };
 		E02D5129247B9108008561D1 /* ConfigureSheet.xib in Resources */ = {isa = PBXBuildFile; fileRef = E02D512B247B9108008561D1 /* ConfigureSheet.xib */; };
-		E03109500F60E0CB009FCCA0 /* frsqrt.hh in Headers */ = {isa = PBXBuildFile; fileRef = E031094F0F60E0CB009FCCA0 /* frsqrt.hh */; };
-		E042195B09A973B500E46FE2 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E042195909A973B500E46FE2 /* Localizable.strings */; };
 		E04FD81D17DC286F00CDEC91 /* thumbnail.png in Resources */ = {isa = PBXBuildFile; fileRef = E04FD81C17DC286F00CDEC91 /* thumbnail.png */; };
 		E0657D0611E1261800B061F8 /* rsMath.h in Headers */ = {isa = PBXBuildFile; fileRef = E0657CFC11E1261800B061F8 /* rsMath.h */; };
 		E0657D0711E1261800B061F8 /* rsMatrix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E0657CFD11E1261800B061F8 /* rsMatrix.cpp */; };
@@ -89,16 +90,12 @@
 		32DBCFA80370C50100C91783 /* Hyperspace_Prefix.pch */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Hyperspace_Prefix.pch; sourceTree = "<group>"; };
 		8D255AD20486D3F9007BF209 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8D255AD30486D3F9007BF209 /* Hyperspace.saver */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Hyperspace.saver; sourceTree = BUILT_PRODUCTS_DIR; };
-		E02D5120247B8EC2008561D1 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		E02D5121247B8EC2008561D1 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
-		E02D5122247B8EC8008561D1 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		E02D5123247B8EC8008561D1 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
-		E02D5125247B8ECC008561D1 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		E02D5126247B8ECC008561D1 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		B41566FC30833884008197CF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B41566FE30833944008197CF /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		B415670030833946008197CF /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
+		B415670230833963008197CF /* ConfigureSheet.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = ConfigureSheet.xcstrings; sourceTree = "<group>"; };
+		B415670830833A93008197CF /* HyperspaceHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HyperspaceHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E02D512A247B9108008561D1 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/ConfigureSheet.xib; sourceTree = "<group>"; };
-		E02D512D247B9113008561D1 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/ConfigureSheet.strings; sourceTree = "<group>"; };
-		E02D512F247B9118008561D1 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/ConfigureSheet.strings; sourceTree = "<group>"; };
-		E031094F0F60E0CB009FCCA0 /* frsqrt.hh */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.cpp.h; path = frsqrt.hh; sourceTree = "<group>"; };
 		E04FD81C17DC286F00CDEC91 /* thumbnail.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = thumbnail.png; sourceTree = "<group>"; };
 		E0657CFC11E1261800B061F8 /* rsMath.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = rsMath.h; sourceTree = "<group>"; };
 		E0657CFD11E1261800B061F8 /* rsMatrix.cpp */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.cpp.cpp; path = rsMatrix.cpp; sourceTree = "<group>"; };
@@ -166,16 +163,27 @@
 		F500797A0118B23001CA0E54 /* HyperspaceView.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = HyperspaceView.mm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B415670930833A93008197CF /* HyperspaceHost */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HyperspaceHost;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		8D255ACD0486D3F9007BF209 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				8D255ACE0486D3F9007BF209 /* Cocoa.framework in Frameworks */,
 				8D255ACF0486D3F9007BF209 /* ScreenSaver.framework in Frameworks */,
 				E0CDA0C209A8F5C50004FDE6 /* OpenGL.framework in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B415670530833A93008197CF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -187,6 +195,7 @@
 				32DBCFA70370C4F300C91783 /* Other Sources */,
 				089C167CFE841241C02AAC07 /* Resources */,
 				089C1671FE841209C02AAC07 /* Frameworks and Libraries */,
+				B415670930833A93008197CF /* HyperspaceHost */,
 				19C28FB8FE9D52D311CA2CBB /* Products */,
 			);
 			name = Hyperspace;
@@ -205,10 +214,12 @@
 			isa = PBXGroup;
 			children = (
 				E02D512B247B9108008561D1 /* ConfigureSheet.xib */,
-				E042195909A973B500E46FE2 /* Localizable.strings */,
 				8D255AD20486D3F9007BF209 /* Info.plist */,
-				089C167DFE841241C02AAC07 /* InfoPlist.strings */,
 				E04FD81C17DC286F00CDEC91 /* thumbnail.png */,
+				B41566FC30833884008197CF /* Assets.xcassets */,
+				B41566FE30833944008197CF /* Localizable.xcstrings */,
+				B415670030833946008197CF /* InfoPlist.xcstrings */,
+				B415670230833963008197CF /* ConfigureSheet.xcstrings */,
 			);
 			name = Resources;
 			sourceTree = "<group>";
@@ -245,6 +256,7 @@
 			isa = PBXGroup;
 			children = (
 				8D255AD30486D3F9007BF209 /* Hyperspace.saver */,
+				B415670830833A93008197CF /* HyperspaceHost.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -252,7 +264,6 @@
 		32DBCFA70370C4F300C91783 /* Other Sources */ = {
 			isa = PBXGroup;
 			children = (
-				E031094F0F60E0CB009FCCA0 /* frsqrt.hh */,
 				E0AA3C5511E11C3500F84B8B /* Hyperspace */,
 				E0CDA24B09A907E90004FDE6 /* Implicit */,
 				E0CDA09809A8E9150004FDE6 /* rsMath */,
@@ -372,7 +383,6 @@
 /* Begin PBXHeadersBuildPhase section */
 		8D255AC60486D3F9007BF209 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				8D255AC70486D3F9007BF209 /* Hyperspace_Prefix.pch in Headers */,
 				8D255AC80486D3F9007BF209 /* HyperspaceView.h in Headers */,
@@ -390,7 +400,6 @@
 				E0CDA0BE09A8E96B0004FDE6 /* fontmap.h in Headers */,
 				E0CDA0C009A8E96B0004FDE6 /* rsText.h in Headers */,
 				E0CDA21209A900520004FDE6 /* Rgbhsl.h in Headers */,
-				E03109500F60E0CB009FCCA0 /* frsqrt.hh in Headers */,
 				E0AA3C6411E11EFF00F84B8B /* extensions.h in Headers */,
 				E0AA3C9311E122EE00F84B8B /* impCapsule.h in Headers */,
 				E0AA3C9411E122EE00F84B8B /* impCrawlPoint.h in Headers */,
@@ -412,7 +421,6 @@
 				E0657D0F11E1261800B061F8 /* rsVec4.h in Headers */,
 				E0657DEC11E13B8300B061F8 /* rsTimer.h in Headers */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXHeadersBuildPhase section */
 
@@ -429,13 +437,29 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
 			name = Hyperspace;
 			productInstallPath = "$(HOME)/Library/Screen Savers";
 			productName = Hyperspace;
 			productReference = 8D255AD30486D3F9007BF209 /* Hyperspace.saver */;
 			productType = "com.apple.product-type.bundle";
+		};
+		B415670730833A93008197CF /* HyperspaceHost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B415671030833A94008197CF /* Build configuration list for PBXNativeTarget "HyperspaceHost" */;
+			buildPhases = (
+				B415670430833A93008197CF /* Sources */,
+				B415670530833A93008197CF /* Frameworks */,
+				B415670630833A93008197CF /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				B415670930833A93008197CF /* HyperspaceHost */,
+			);
+			name = HyperspaceHost;
+			productName = HyperspaceHost;
+			productReference = B415670830833A93008197CF /* HyperspaceHost.app */;
+			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
@@ -443,15 +467,16 @@
 		089C1669FE841209C02AAC07 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 1200;
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 1410;
 				TargetAttributes = {
-					8D255AC50486D3F9007BF209 = {
-						DevelopmentTeam = 8D98N325TG;
+					B415670730833A93008197CF = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
 			buildConfigurationList = EF7AD73108BB986600CE4634 /* Build configuration list for PBXProject "Hyperspace" */;
-			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = en;
 			hasScannedForEncodings = 1;
 			knownRegions = (
@@ -461,10 +486,12 @@
 				fr,
 			);
 			mainGroup = 089C166AFE841209C02AAC07 /* Hyperspace */;
+			preferredProjectObjectVersion = 110;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				8D255AC50486D3F9007BF209 /* Hyperspace */,
+				B415670730833A93008197CF /* HyperspaceHost */,
 			);
 		};
 /* End PBXProject section */
@@ -472,31 +499,33 @@
 /* Begin PBXResourcesBuildPhase section */
 		8D255AC90486D3F9007BF209 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
-				8D255ACA0486D3F9007BF209 /* InfoPlist.strings in Resources */,
-				E042195B09A973B500E46FE2 /* Localizable.strings in Resources */,
+				B415670130833946008197CF /* InfoPlist.xcstrings in Resources */,
+				B41566FF30833944008197CF /* Localizable.xcstrings in Resources */,
 				E02D5129247B9108008561D1 /* ConfigureSheet.xib in Resources */,
 				E04FD81D17DC286F00CDEC91 /* thumbnail.png in Resources */,
+				B415670330833963008197CF /* ConfigureSheet.xcstrings in Resources */,
+				B41566FD30833884008197CF /* Assets.xcassets in Resources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B415670630833A93008197CF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXRezBuildPhase section */
 		8D255AD00486D3F9007BF209 /* Rez */ = {
 			isa = PBXRezBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXRezBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		8D255ACB0486D3F9007BF209 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				8D255ACC0486D3F9007BF209 /* HyperspaceView.mm in Sources */,
 				E0CDA06209A8E5C00004FDE6 /* starBurst.cpp in Sources */,
@@ -527,54 +556,179 @@
 				E0657D0C11E1261800B061F8 /* rsVec.cpp in Sources */,
 				E0657D0E11E1261800B061F8 /* rsVec4.cpp in Sources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B415670430833A93008197CF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
-		089C167DFE841241C02AAC07 /* InfoPlist.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				E02D5120247B8EC2008561D1 /* de */,
-				E02D5122247B8EC8008561D1 /* en */,
-				E02D5125247B8ECC008561D1 /* fr */,
-			);
-			name = InfoPlist.strings;
-			sourceTree = "<group>";
-		};
 		E02D512B247B9108008561D1 /* ConfigureSheet.xib */ = {
 			isa = PBXVariantGroup;
 			children = (
 				E02D512A247B9108008561D1 /* Base */,
-				E02D512D247B9113008561D1 /* fr */,
-				E02D512F247B9118008561D1 /* de */,
 			);
 			name = ConfigureSheet.xib;
-			sourceTree = "<group>";
-		};
-		E042195909A973B500E46FE2 /* Localizable.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				E02D5121247B8EC2008561D1 /* de */,
-				E02D5123247B8EC8008561D1 /* en */,
-				E02D5126247B8ECC008561D1 /* fr */,
-			);
-			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
-		EF7AD72E08BB986600CE4634 /* Debug */ = {
+		B415671130833A94008197CF /* Debug configuration for PBXNativeTarget "HyperspaceHost" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.reallyslick.HyperspaceHost;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Debug;
+		};
+		B415671230833A94008197CF /* Release configuration for PBXNativeTarget "HyperspaceHost" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.reallyslick.HyperspaceHost;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+		EF7AD72E08BB986600CE4634 /* Debug configuration for PBXNativeTarget "Hyperspace" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
-				DEVELOPMENT_TEAM = 8D98N325TG;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 88FC26PL93;
 				ENABLE_HARDENED_RUNTIME = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
@@ -582,6 +736,8 @@
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)";
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.reallyslick.Hyperspace;
 				PRODUCT_NAME = Hyperspace;
 				SDKROOT = macosx;
@@ -589,18 +745,21 @@
 			};
 			name = Debug;
 		};
-		EF7AD72F08BB986600CE4634 /* Release */ = {
+		EF7AD72F08BB986600CE4634 /* Release configuration for PBXNativeTarget "Hyperspace" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 8D98N325TG;
+				DEVELOPMENT_TEAM = 88FC26PL93;
 				ENABLE_HARDENED_RUNTIME = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_FAST_MATH = YES;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
 				GCC_OPTIMIZATION_LEVEL = 3;
@@ -609,6 +768,8 @@
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)";
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.reallyslick.Hyperspace;
 				PRODUCT_NAME = Hyperspace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -617,9 +778,10 @@
 			};
 			name = Release;
 		};
-		EF7AD73208BB986600CE4634 /* Debug */ = {
+		EF7AD73208BB986600CE4634 /* Debug configuration for PBXProject "Hyperspace" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
 				CLANG_WARN_BOOL_CONVERSION = YES;
@@ -639,6 +801,9 @@
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 88FC26PL93;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
@@ -651,7 +816,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				ONLY_ACTIVE_ARCH = YES;
 				WARNING_CFLAGS = (
 					"-Wmost",
@@ -660,9 +825,10 @@
 			};
 			name = Debug;
 		};
-		EF7AD73308BB986600CE4634 /* Release */ = {
+		EF7AD73308BB986600CE4634 /* Release configuration for PBXProject "Hyperspace" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
 				CLANG_WARN_BOOL_CONVERSION = YES;
@@ -682,6 +848,9 @@
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 88FC26PL93;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				"GCC_ENABLE_OBJC_GC[arch=x86_64]" = supported;
@@ -693,7 +862,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				WARNING_CFLAGS = (
 					"-Wmost",
 					"-Wno-missing-braces",
@@ -704,22 +873,28 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		B415671030833A94008197CF /* Build configuration list for PBXNativeTarget "HyperspaceHost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B415671130833A94008197CF /* Debug configuration for PBXNativeTarget "HyperspaceHost" */,
+				B415671230833A94008197CF /* Release configuration for PBXNativeTarget "HyperspaceHost" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		EF7AD72D08BB986600CE4634 /* Build configuration list for PBXNativeTarget "Hyperspace" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				EF7AD72E08BB986600CE4634 /* Debug */,
-				EF7AD72F08BB986600CE4634 /* Release */,
+				EF7AD72E08BB986600CE4634 /* Debug configuration for PBXNativeTarget "Hyperspace" */,
+				EF7AD72F08BB986600CE4634 /* Release configuration for PBXNativeTarget "Hyperspace" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		EF7AD73108BB986600CE4634 /* Build configuration list for PBXProject "Hyperspace" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				EF7AD73208BB986600CE4634 /* Debug */,
-				EF7AD73308BB986600CE4634 /* Release */,
+				EF7AD73208BB986600CE4634 /* Debug configuration for PBXProject "Hyperspace" */,
+				EF7AD73308BB986600CE4634 /* Release configuration for PBXProject "Hyperspace" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
