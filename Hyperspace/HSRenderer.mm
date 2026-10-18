@@ -131,15 +131,20 @@ public:
 	int stackTop = 0;
 	double projectionMatrix[16];
 
-	// Pipelines, one sampler for everything (linear, clamp-to-edge; fine for
-	// non-mipmapped flare sprites and, later, clamped cube maps).
 	id<MTLLibrary> library = nil;
 	id<MTL4Compiler> compiler = nil;
 	id<MTLRenderPipelineState> spritePSO = nil;
 	id<MTLRenderPipelineState> tunnelPSO = nil;
 	id<MTLRenderPipelineState> gooPSO = nil;
 	id<MTLRenderPipelineState> causticPSO = nil;
-	id<MTLSamplerState> sampler = nil;
+	// Two samplers, selected per pipeline in end(): the original never set an explicit wrap
+	// mode for 2D textures (sprite/flare, tunnel/caustic), which left them at GL's default
+	// of GL_REPEAT — tunnel actually depends on that (texSpin adds a cosine offset, and the
+	// fragment shader multiplies uv by (3,2), both routinely landing outside [0,1], which
+	// needs to tile, not clamp). Cube maps (goo's nebula + wavy-normal textures) explicitly
+	// used GL_CLAMP_TO_EDGE in the original, so they keep a separate clamped sampler.
+	id<MTLSamplerState> samplerRepeat = nil;
+	id<MTLSamplerState> samplerClamp = nil;
 	id<MTL4ArgumentTable> argTable = nil;
 
 	// Per-frame dynamic vertex buffer: a simple bump allocator reset every beginFrame.
@@ -292,14 +297,23 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	if (!spritePSO || !tunnelPSO || !gooPSO || !causticPSO)
 		return false;
 
-	MTLSamplerDescriptor *samplerDesc = [MTLSamplerDescriptor new];
-	samplerDesc.minFilter = MTLSamplerMinMagFilterLinear;
-	samplerDesc.magFilter = MTLSamplerMinMagFilterLinear;
-	samplerDesc.mipFilter = MTLSamplerMipFilterLinear;
-	samplerDesc.sAddressMode = MTLSamplerAddressModeClampToEdge;
-	samplerDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
-	samplerDesc.rAddressMode = MTLSamplerAddressModeClampToEdge;
-	id<MTLSamplerState> sampler = [device newSamplerStateWithDescriptor:samplerDesc];
+	MTLSamplerDescriptor *repeatDesc = [MTLSamplerDescriptor new];
+	repeatDesc.minFilter = MTLSamplerMinMagFilterLinear;
+	repeatDesc.magFilter = MTLSamplerMinMagFilterLinear;
+	repeatDesc.mipFilter = MTLSamplerMipFilterLinear;
+	repeatDesc.sAddressMode = MTLSamplerAddressModeRepeat;
+	repeatDesc.tAddressMode = MTLSamplerAddressModeRepeat;
+	repeatDesc.rAddressMode = MTLSamplerAddressModeRepeat;
+	id<MTLSamplerState> samplerRepeat = [device newSamplerStateWithDescriptor:repeatDesc];
+
+	MTLSamplerDescriptor *clampDesc = [MTLSamplerDescriptor new];
+	clampDesc.minFilter = MTLSamplerMinMagFilterLinear;
+	clampDesc.magFilter = MTLSamplerMinMagFilterLinear;
+	clampDesc.mipFilter = MTLSamplerMipFilterLinear;
+	clampDesc.sAddressMode = MTLSamplerAddressModeClampToEdge;
+	clampDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
+	clampDesc.rAddressMode = MTLSamplerAddressModeClampToEdge;
+	id<MTLSamplerState> samplerClamp = [device newSamplerStateWithDescriptor:clampDesc];
 
 	MTL4ArgumentTableDescriptor *argTableDesc = [MTL4ArgumentTableDescriptor new];
 	argTableDesc.maxBufferBindCount = 2;
@@ -311,7 +325,7 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 		NSLog(@"HSRenderer: failed to create argument table: %@", error);
 		return false;
 	}
-	[argTable setSamplerState:sampler.gpuResourceID atIndex:0];
+	[argTable setSamplerState:samplerRepeat.gpuResourceID atIndex:0];
 
 	id<MTLBuffer> vertexBuffer = [device newBufferWithLength:kVertexBufferCapacity options:MTLResourceStorageModeShared];
 	vertexBuffer.label = @"HSRenderer vertex ring";
@@ -327,7 +341,8 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	impl->tunnelPSO = tunnelPSO;
 	impl->gooPSO = gooPSO;
 	impl->causticPSO = causticPSO;
-	impl->sampler = sampler;
+	impl->samplerRepeat = samplerRepeat;
+	impl->samplerClamp = samplerClamp;
 	impl->argTable = argTable;
 	impl->vertexBuffer = vertexBuffer;
 	impl->fogBuffer = fogBuffer;
@@ -650,16 +665,18 @@ void HSRenderer::end()
 	std::memcpy(dest, impl->vertexAccumulator.data(), byteSize);
 
 	id<MTLRenderPipelineState> pso = nil;
+	id<MTLSamplerState> sampler = impl->samplerRepeat;
 	switch (impl->currentPipeline)
 	{
 		case HS_PIPELINE_SPRITE:  pso = impl->spritePSO; break;
 		case HS_PIPELINE_TUNNEL:  pso = impl->tunnelPSO; break;
-		case HS_PIPELINE_GOO:     pso = impl->gooPSO; break;
+		case HS_PIPELINE_GOO:     pso = impl->gooPSO; sampler = impl->samplerClamp; break;
 		case HS_PIPELINE_CAUSTIC: pso = impl->causticPSO; break;
 	}
 
 	[impl->argTable setAddress:(impl->vertexBuffer.gpuAddress + impl->vertexBufferOffset) atIndex:0];
 	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
+	[impl->argTable setSamplerState:sampler.gpuResourceID atIndex:0];
 	for (int unit = 0; unit < 3; ++unit)
 	{
 		auto it = impl->textures.find(impl->boundTextures[unit]);
