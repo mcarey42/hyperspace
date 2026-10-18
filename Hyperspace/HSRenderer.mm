@@ -36,6 +36,11 @@
 // disappearing entirely, since it's encoded after stars/goo in the frame.
 static const size_t kVertexBufferCapacity = 16 * 1024 * 1024;
 static const size_t kIndexBufferCapacity = 2 * 1024 * 1024;	// goo/starburst indices; smaller margin is fine since these aren't strip-expanded
+// Fog uniforms are written once per batch that follows a setFog() change, into a small
+// per-frame-slot buffer; 256-byte stride keeps every binding comfortably aligned. A frame
+// only changes fog a couple of times, so 256 entries is a wide margin.
+static const size_t kFogUniformStride = 256;
+static const size_t kFogBufferCapacity = 256 * kFogUniformStride;
 // Every vertex is 14 floats: clipPosition(4) + eyePosition(3) + attrib3(3) + color(4).
 
 static const int kMaxMatrixStackDepth = 32;
@@ -191,7 +196,21 @@ public:
 	id<MTLBuffer> currentIndexBuffer = nil;
 	size_t indexBufferOffset = 0;
 
-	// Fog uniforms, matching HSFogUniforms in Shaders.metal.
+	// Fog uniforms, matching HSFogUniforms in Shaders.metal. setFog() used to memcpy straight
+	// into one shared buffer, but draws only read it once the GPU runs the committed frame, so
+	// every draw in a frame saw whatever setFog() wrote last (the sun and flare, meant to be
+	// unfogged, were fogged), and the CPU overwrote it while earlier frames could still be
+	// reading it. Now setFog() only updates fogUniforms; each batch flush writes the current
+	// value into this frame slot's frameFogBuffers[] entry (see hsCurrentFogAddress).
+	struct FogUniforms { float color[4]; float scale; float end; uint32_t enabled; uint32_t pad; };
+	FogUniforms fogUniforms = {{0.0f, 0.0f, 0.0f, 1.0f}, 0.0f, 0.0f, 0, 0};
+	bool fogDirty = true;
+	id<MTLBuffer> frameFogBuffers[kMaxFramesInFlight] = {nil, nil, nil};
+	id<MTLBuffer> currentFogBuffer = nil;	// nil outside beginFrame/endFrame
+	size_t fogBufferOffset = 0;
+	uint64_t currentFogAddress = 0;
+	// Fog-disabled uniforms written once in attachToView and never touched again, bound by
+	// caustic setup frames (whose shader ignores fog) so they never share frame memory.
 	id<MTLBuffer> fogBuffer = nil;
 
 	// Texture storage.
@@ -279,6 +298,27 @@ public:
 	}
 };
 
+// GPU address of fog uniforms matching the fog state at the time this batch was queued.
+// setFog() flushes pending batches before changing fogUniforms, so "current" is right here.
+static uint64_t hsCurrentFogAddress(HSRendererImpl *impl)
+{
+	if (!impl->currentFogBuffer)
+		return impl->fogBuffer.gpuAddress;
+	if (impl->fogDirty || impl->currentFogAddress == 0)
+	{
+		if (impl->fogBufferOffset + kFogUniformStride <= kFogBufferCapacity)
+		{
+			std::memcpy(static_cast<uint8_t *>(impl->currentFogBuffer.contents) + impl->fogBufferOffset,
+						&impl->fogUniforms, sizeof(impl->fogUniforms));
+			impl->currentFogAddress = impl->currentFogBuffer.gpuAddress + impl->fogBufferOffset;
+			impl->fogBufferOffset += kFogUniformStride;
+		}
+		// else: out of entries this frame; keep the last one rather than overrun
+		impl->fogDirty = false;
+	}
+	return impl->currentFogAddress;
+}
+
 // Issues the deferred draw call for whatever non-indexed (sprite/tunnel/caustic) geometry has
 // accumulated since the last flush, using the state captured in pendingSpriteKey — not whatever
 // impl->currentPipeline/currentCullMode/boundTextures happen to be *now*, since those may have
@@ -303,7 +343,7 @@ static void hsFlushSpriteBatch(HSRendererImpl *impl)
 	}
 
 	[impl->argTable setAddress:(impl->currentVertexBuffer.gpuAddress + impl->pendingSpriteStartOffset) atIndex:0];
-	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
+	[impl->argTable setAddress:hsCurrentFogAddress(impl) atIndex:1];
 	[impl->argTable setSamplerState:sampler.gpuResourceID atIndex:0];
 	for (int unit = 0; unit < 3; ++unit)
 	{
@@ -334,7 +374,7 @@ static void hsFlushMeshBatch(HSRendererImpl *impl)
 	}
 
 	[impl->argTable setAddress:(impl->currentVertexBuffer.gpuAddress + impl->pendingMeshVertexStartOffset) atIndex:0];
-	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
+	[impl->argTable setAddress:hsCurrentFogAddress(impl) atIndex:1];
 	[impl->argTable setSamplerState:impl->samplerClamp.gpuResourceID atIndex:0];
 	for (int unit = 0; unit < 3; ++unit)
 	{
@@ -547,8 +587,19 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 		[residencySet addAllocation:frameVertexBuffers[i]];
 		[residencySet addAllocation:frameIndexBuffers[i]];
 	}
-	id<MTLBuffer> fogBuffer = [device newBufferWithLength:32 options:MTLResourceStorageModeShared];
-	fogBuffer.label = @"HSRenderer fog uniforms";
+	id<MTLBuffer> frameFogBuffers[HSRendererImpl::kMaxFramesInFlight];
+	for (int i = 0; i < HSRendererImpl::kMaxFramesInFlight; ++i)
+	{
+		frameFogBuffers[i] = [device newBufferWithLength:kFogBufferCapacity options:MTLResourceStorageModeShared];
+		if (!frameFogBuffers[i])
+			return false;
+		frameFogBuffers[i].label = [NSString stringWithFormat:@"HSRenderer fog uniforms %d", i];
+		[residencySet addAllocation:frameFogBuffers[i]];
+	}
+	id<MTLBuffer> fogBuffer = [device newBufferWithLength:kFogUniformStride options:MTLResourceStorageModeShared];
+	fogBuffer.label = @"HSRenderer setup fog uniforms (disabled)";
+	HSRendererImpl::FogUniforms disabledFog = {{0.0f, 0.0f, 0.0f, 1.0f}, 0.0f, 0.0f, 0, 0};
+	std::memcpy(fogBuffer.contents, &disabledFog, sizeof(disabledFog));
 	[residencySet addAllocation:fogBuffer];
 	[residencySet commit];
 
@@ -567,6 +618,8 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 		impl->frameIndexBuffers[i] = frameIndexBuffers[i];
 	}
 	impl->fogBuffer = fogBuffer;
+	for (int i = 0; i < HSRendererImpl::kMaxFramesInFlight; ++i)
+		impl->frameFogBuffers[i] = frameFogBuffers[i];
 
 	return true;
 }
@@ -673,6 +726,9 @@ bool HSRenderer::beginFrame()
 	// kMaxFramesInFlight, which the frameEvent wait above confirmed the GPU has finished.
 	impl->currentVertexBuffer = impl->frameVertexBuffers[slot];
 	impl->currentIndexBuffer = impl->frameIndexBuffers[slot];
+	impl->currentFogBuffer = impl->frameFogBuffers[slot];
+	impl->fogBufferOffset = 0;
+	impl->currentFogAddress = 0;
 	impl->vertexBufferOffset = 0;
 	impl->indexBufferOffset = 0;
 	impl->hasPendingSpriteBatch = false;
@@ -709,6 +765,7 @@ void HSRenderer::endFrame()
 	impl->drawable = nil;
 	impl->currentVertexBuffer = nil;
 	impl->currentIndexBuffer = nil;
+	impl->currentFogBuffer = nil;
 	impl->frameInProgress = false;
 }
 
@@ -717,13 +774,20 @@ void HSRenderer::endFrame()
 // Matches HSFogUniforms in Shaders.metal: float4 color; float scale; float end; bool enabled;
 void HSRenderer::setFog(float start, float end, bool enabled)
 {
-	struct { float color[4]; float scale; float end; uint32_t enabled; uint32_t pad; } uniforms;
+	// Anything already queued was submitted under the old fog state; draw it with that.
+	if (impl->encoder)
+	{
+		hsFlushSpriteBatch(impl);
+		hsFlushMeshBatch(impl);
+	}
+
+	HSRendererImpl::FogUniforms &uniforms = impl->fogUniforms;
 	uniforms.color[0] = uniforms.color[1] = uniforms.color[2] = 0.0f;	// fog is always black in this engine
 	uniforms.color[3] = 1.0f;
 	uniforms.scale = (end != start) ? 1.0f / (end - start) : 0.0f;
 	uniforms.end = end;
 	uniforms.enabled = enabled ? 1 : 0;
-	std::memcpy(impl->fogBuffer.contents, &uniforms, sizeof(uniforms));
+	impl->fogDirty = true;
 }
 
 void HSRenderer::setProjectionMatrix(const double projMat[16])
