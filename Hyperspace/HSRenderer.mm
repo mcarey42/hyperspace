@@ -143,6 +143,14 @@ public:
 	std::map<HSTextureRef, id<MTLTexture>> textures;
 	HSTextureRef nextTextureRef = 1;
 
+	// One-off offscreen caustic-texture generation (see beginCausticFrame/endCausticFrame).
+	// Each call gets its own throwaway allocator rather than reusing impl->allocator, since
+	// this always runs during initSaver() before the per-frame allocator has any work on it;
+	// kept alive forever (never reset) is fine — this only happens a couple dozen times total.
+	std::vector<id<MTL4CommandAllocator>> setupAllocators;
+	id<MTLTexture> causticTexture = nil;
+	int causticSize = 0;
+
 	// Immediate-mode state.
 	HSPipeline currentPipeline = HS_PIPELINE_SPRITE;
 	HSCullMode currentCullMode = HS_CULL_NONE;
@@ -392,7 +400,11 @@ void HSRenderer::setProjectionMatrix(const float projMat[16])
 		impl->projectionMatrix[i] = double(projMat[i]);
 }
 
-// Exact port of gluPerspective's matrix construction.
+// gluPerspective's matrix construction, with the z row rederived for Metal's clip-space
+// convention: GL expects clip.z/w in [-1,1] after the divide, Metal expects [0,1]. The fix
+// is a standard one (new_z_row = 0.5 * (gl_z_row + gl_w_row)); baking it in here means every
+// caller that builds a projection through this class gets correct near/far clipping without
+// having to know Metal's convention differs from the gluPerspective formula they're ported from.
 void HSRenderer::perspective(float fovyDegrees, float aspect, float zNear, float zFar, double outMat[16])
 {
 	double radians = double(fovyDegrees) * M_PI / 360.0;	// fovy/2, in radians
@@ -407,23 +419,29 @@ void HSRenderer::perspective(float fovyDegrees, float aspect, float zNear, float
 	hsMatIdentity(outMat);
 	outMat[0] = cotangent / aspect;
 	outMat[5] = cotangent;
-	outMat[10] = -(double(zFar) + double(zNear)) / deltaZ;
+	outMat[10] = -double(zFar) / deltaZ;
 	outMat[11] = -1.0;
-	outMat[14] = -2.0 * double(zFar) * double(zNear) / deltaZ;
+	outMat[14] = -double(zFar) * double(zNear) / deltaZ;
 	outMat[15] = 0.0;
 }
 
-// Exact port of gluOrtho2D (glOrtho with near=-1, far=1).
-void HSRenderer::ortho2D(float left, float right, float bottom, float top, double outMat[16])
+// glOrtho, with the same GL-to-Metal z row rederivation as perspective() above.
+void HSRenderer::ortho(float left, float right, float bottom, float top, float zNear, float zFar, double outMat[16])
 {
-	double near = -1.0, far = 1.0;
+	double near = double(zNear), far = double(zFar);
 	hsMatIdentity(outMat);
 	outMat[0] = 2.0 / (double(right) - double(left));
 	outMat[5] = 2.0 / (double(top) - double(bottom));
-	outMat[10] = -2.0 / (far - near);
+	outMat[10] = -1.0 / (far - near);
 	outMat[12] = -(double(right) + double(left)) / (double(right) - double(left));
 	outMat[13] = -(double(top) + double(bottom)) / (double(top) - double(bottom));
-	outMat[14] = -(far + near) / (far - near);
+	outMat[14] = -near / (far - near);
+}
+
+// gluOrtho2D is glOrtho with near=-1, far=1.
+void HSRenderer::ortho2D(float left, float right, float bottom, float top, double outMat[16])
+{
+	ortho(left, right, bottom, top, -1.0f, 1.0f, outMat);
 }
 
 // Exact port of gluProject.
@@ -660,5 +678,67 @@ void HSRenderer::destroyTexture(HSTextureRef texture)
 	impl->textures.erase(texture);
 }
 
-void HSRenderer::beginCausticFrame(int size) {}
-HSTextureRef HSRenderer::endCausticFrame() { return HS_INVALID_TEXTURE; }
+// Renders directly into a mipmapped offscreen texture instead of the original's approach
+// (draw to the visible framebuffer, glReadPixels into a CPU bitmap, re-upload via
+// gluBuild2DMipmaps) — that approach is also what broke on preview-sized (<256px) drawables.
+// Always called from initSaver(), before the main per-frame allocator/encoder are ever used,
+// so it's safe to borrow impl->commandBuffer/encoder here.
+void HSRenderer::beginCausticFrame(int size)
+{
+	MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+																					  width:size
+																					 height:size
+																				  mipmapped:YES];
+	desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+	impl->causticTexture = [impl->device newTextureWithDescriptor:desc];
+	impl->causticSize = size;
+
+	id<MTL4CommandAllocator> allocator = [impl->device newCommandAllocator];
+	impl->setupAllocators.push_back(allocator);
+
+	MTL4RenderPassDescriptor *pass = [MTL4RenderPassDescriptor new];
+	pass.colorAttachments[0].texture = impl->causticTexture;
+	pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+	pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+	pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+
+	id<MTL4CommandBuffer> commandBuffer = [impl->device newCommandBuffer];
+	[commandBuffer beginCommandBufferWithAllocator:allocator];
+
+	impl->commandBuffer = commandBuffer;
+	impl->encoder = [commandBuffer renderCommandEncoderWithDescriptor:pass];
+	MTLViewport viewport = {0.0, 0.0, double(size), double(size), 0.0, 1.0};
+	[impl->encoder setViewport:viewport];
+	[impl->encoder setFrontFacingWinding:MTLWindingCounterClockwise];
+	[impl->encoder setCullMode:MTLCullModeNone];
+	impl->currentCullMode = HS_CULL_NONE;
+	impl->vertexBufferOffset = 0;
+}
+
+HSTextureRef HSRenderer::endCausticFrame()
+{
+	[impl->encoder endEncoding];
+
+	id<MTL4ComputeCommandEncoder> mipEncoder = [impl->commandBuffer computeCommandEncoder];
+	[mipEncoder generateMipmapsForTexture:impl->causticTexture];
+	[mipEncoder endEncoding];
+
+	[impl->commandBuffer endCommandBuffer];
+	id<MTL4CommandBuffer> buffers[1] = {impl->commandBuffer};
+	[impl->queue commit:buffers count:1];
+	// No CPU wait: the real per-frame rendering that will sample this texture doesn't start
+	// until the main loop begins, well after initSaver() (and every beginCausticFrame/
+	// endCausticFrame call it makes) returns, and everything commits to the same queue —
+	// the same same-queue-ordering guarantee createTexture2D's mipmap generation relies on.
+
+	[impl->residencySet addAllocation:impl->causticTexture];
+	[impl->residencySet commit];
+
+	HSTextureRef ref = impl->nextTextureRef++;
+	impl->textures[ref] = impl->causticTexture;
+
+	impl->commandBuffer = nil;
+	impl->encoder = nil;
+	impl->causticTexture = nil;
+	return ref;
+}

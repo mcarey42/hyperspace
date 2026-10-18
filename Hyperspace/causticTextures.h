@@ -24,11 +24,7 @@
 
 
 
-/*#ifdef WIN32
-	#include <windows.h>
-#endif
-#include "GL/gl.h"*/
-#include <OpenGL/gl.h>
+#include "HSRenderer.h"
 
 
 class causticTextures{
@@ -40,8 +36,8 @@ public:
 	float waveAmp;
 	float refractionMult;
 
-	// textures indices for OpenGL texture objects
-	GLuint* caustictex;
+	// one offscreen-rendered, mipmapped texture per animation frame
+	HSTextureRef* caustictex;
 
 	// space for storing geometry of water surface
 	float* x;  // x and z are the same for each frame
@@ -51,16 +47,16 @@ public:
 	float*** xz;  // projected vertex positions
 	float** intensity;  // projected light intensity
 
-	GLubyte** bitmap;
-
 	// constructor takes the following parameters:
 	// num keyframes (only for fractal heightfield generation),
 	// number of frames, geometry resolution, texture resolution, water depth, wave amplitude,
 	// refraction multiplier (sort of like index of refraction)
-	causticTextures(int keys, int frames, int res, int size, float depth, float wa, float rm);
-	~causticTextures(){}
+	causticTextures(int keys, int frames, int res, int size, float depth, float wa, float rm, HSRenderer* r);
+	~causticTextures();
 
 private:
+	HSRenderer* renderer;
+
 	void makeFractalAltitudes();
 	void makeTrigAltitudes();
 	void altitudeSquare(int left, int right, int bottom, int top, float** alt);

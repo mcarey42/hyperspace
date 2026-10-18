@@ -69,6 +69,7 @@ public:
 	void setProjectionMatrix(const double projMat[16]);
 	void setProjectionMatrix(const float projMat[16]);
 	static void perspective(float fovyDegrees, float aspect, float zNear, float zFar, double outMat[16]);
+	static void ortho(float left, float right, float bottom, float top, float zNear, float zFar, double outMat[16]);
 	static void ortho2D(float left, float right, float bottom, float top, double outMat[16]);
 	// gluProject equivalent: object space -> window coordinates.
 	static bool project(double objX, double objY, double objZ,

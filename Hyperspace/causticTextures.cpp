@@ -19,25 +19,16 @@
  */
 
 
-#ifdef WIN32
-	#include <windows.h>
-	extern HDC hdc;
-#endif
-#ifdef RS_XSCREENSAVER
-#include <rsXScreenSaver/rsXScreenSaver.h>
-#endif
-#include <iostream>
 #include <Hyperspace/causticTextures.h>
 #include <math.h>
-#include <OpenGL/OpenGL.h>
 #include <rsMath/rsMath.h>
 
 
-causticTextures::causticTextures(int keys, int frames, int res, int size, float depth, float wa, float rm){
+causticTextures::causticTextures(int keys, int frames, int res, int size, float depth, float wa, float rm, HSRenderer* r){
 	int i, j, k;
 	int xminus, xplus, zminus, zplus;
-	GLint viewport[4];
-	unsigned char* bitmap = new unsigned char[size * size * 3];
+
+	renderer = r;
 
 	// initialize dimensions
 	numKeys = keys;
@@ -55,8 +46,7 @@ causticTextures::causticTextures(int keys, int frames, int res, int size, float 
 	waveAmp = wa;
 	refractionMult = rm;
 
-	caustictex = new GLuint[numFrames];
-	glGenTextures(numFrames, caustictex);
+	caustictex = new HSTextureRef[numFrames];
 
 	// allocate memory
 	x = new float[geoRes + 1];
@@ -88,22 +78,14 @@ causticTextures::causticTextures(int keys, int frames, int res, int size, float 
 	//makeFractalAltitudes();
 	makeTrigAltitudes();
 
-	// prepare to draw textures
-	glGetIntegerv(GL_VIEWPORT, viewport);
-	glViewport(0, 0, texSize, texSize);
-	glMatrixMode(GL_PROJECTION);
-	glPushMatrix();
-	glLoadIdentity();
-	glOrtho(0.0f, 1.0f, 0.0f, 1.0f, -0.5f, 0.5f);
-	glMatrixMode(GL_MODELVIEW);
-	glPushMatrix();
-	glRotatef(-90.0f, 1, 0, 0);
-	glReadBuffer(GL_BACK);
-	//glPixelStorei(GL_UNPACK_ROW_LENGTH, texSize);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glDisable(GL_TEXTURE_2D);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-	glEnable(GL_BLEND);
+	// prepare to draw textures: a fixed camera setup (orthographic, looking straight down
+	// at the water surface) that persists across every frame's offscreen render below.
+	double orthoMat[16];
+	HSRenderer::ortho(0.0f, 1.0f, 0.0f, 1.0f, -0.5f, 0.5f, orthoMat);
+	renderer->setProjectionMatrix(orthoMat);
+	renderer->loadIdentity();
+	renderer->rotate(-90.0f, 1, 0, 0);
+	renderer->setPipeline(HS_PIPELINE_CAUSTIC);
 
 	// project vertices and create textures
 	float recvert = float(geoRes) * 0.5f;  // reciprocal of vertical component of light ray
@@ -153,76 +135,64 @@ causticTextures::causticTextures(int keys, int frames, int res, int size, float 
 		for(j=0; j<=geoRes; j++)
 			intensity[geoRes][j] = intensity[0][j];
 
-		// draw texture
-		glClear(GL_COLOR_BUFFER_BIT);
+		// draw texture directly into an offscreen Metal texture; no readback/re-upload
+		// round trip through a CPU bitmap needed, unlike the original's glReadPixels
+		// approach (which also broke on preview-sized, <256px drawables, since it read
+		// from the visible framebuffer instead of a dedicated offscreen target).
+		renderer->beginCausticFrame(texSize);
 		// draw most of texture
 		draw(0, geoRes, 0, geoRes);
 		// draw edges of texture that wrap around from opposite sides
 		int numRows = geoRes / 10;
-		glPushMatrix();
-			glTranslatef(-1.0f, 0.0f, 0.0f);
+		renderer->matrixPush();
+			renderer->translate(-1.0f, 0.0f, 0.0f);
 			draw(geoRes - numRows, geoRes, 0, geoRes);
-		glPopMatrix();
-		glPushMatrix();
-			glTranslatef(1.0f, 0.0f, 0.0f);
+		renderer->matrixPop();
+		renderer->matrixPush();
+			renderer->translate(1.0f, 0.0f, 0.0f);
 			draw(0, numRows, 0, geoRes);
-		glPopMatrix();
-		glPushMatrix();
-			glTranslatef(0.0f, 0.0f, -1.0f);
+		renderer->matrixPop();
+		renderer->matrixPush();
+			renderer->translate(0.0f, 0.0f, -1.0f);
 			draw(0, geoRes, geoRes - numRows, geoRes);
-		glPopMatrix();
-		glPushMatrix();
-			glTranslatef(0.0f, 0.0f, 1.0f);
+		renderer->matrixPop();
+		renderer->matrixPush();
+			renderer->translate(0.0f, 0.0f, 1.0f);
 			draw(0, geoRes, 0, numRows);
-		glPopMatrix();
+		renderer->matrixPop();
 		// draw corners too
-		glPushMatrix();
-			glTranslatef(-1.0f, 0.0f, -1.0f);
+		renderer->matrixPush();
+			renderer->translate(-1.0f, 0.0f, -1.0f);
 			draw(geoRes - numRows, geoRes, geoRes - numRows, geoRes);
-		glPopMatrix();
-		glPushMatrix();
-			glTranslatef(1.0f, 0.0f, -1.0f);
+		renderer->matrixPop();
+		renderer->matrixPush();
+			renderer->translate(1.0f, 0.0f, -1.0f);
 			draw(0, numRows, geoRes - numRows, geoRes);
-		glPopMatrix();
-		glPushMatrix();
-			glTranslatef(-1.0f, 0.0f, 1.0f);
+		renderer->matrixPop();
+		renderer->matrixPush();
+			renderer->translate(-1.0f, 0.0f, 1.0f);
 			draw(geoRes - numRows, geoRes, 0, numRows);
-		glPopMatrix();
-		glPushMatrix();
-			glTranslatef(1.0f, 0.0f, 1.0f);
+		renderer->matrixPop();
+		renderer->matrixPush();
+			renderer->translate(1.0f, 0.0f, 1.0f);
 			draw(0, numRows, 0, numRows);
-		glPopMatrix();
+		renderer->matrixPop();
 
-		// read back texture
-		glReadPixels(0, 0, texSize, texSize, GL_RGB, GL_UNSIGNED_BYTE, bitmap);
-
-		// create texture object
-		glBindTexture(GL_TEXTURE_2D, caustictex[k]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-		gluBuild2DMipmaps(GL_TEXTURE_2D, 3, texSize, texSize, GL_RGB,
-			GL_UNSIGNED_BYTE, bitmap);
-		
-#ifdef WIN32
-		wglSwapLayerBuffers(hdc, WGL_SWAP_MAIN_PLANE);
-#endif
-#ifdef RS_XSCREENSAVER
-		glXSwapBuffers(xdisplay, xwindow);
-#endif
+		caustictex[k] = renderer->endCausticFrame();
 	}
-
-	// restore matrix stack
-	glPopMatrix();
-	glMatrixMode(GL_PROJECTION);
-	glPopMatrix();
-	glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 
 	delete[] x;
 	delete[] y;
 	delete[] z;
 	delete[] xz;
 	delete[] intensity;
-	delete[] bitmap;
+}
+
+
+causticTextures::~causticTextures(){
+	for(int i=0; i<numFrames; i++)
+		renderer->destroyTexture(caustictex[i]);
+	delete[] caustictex;
 }
 
 
@@ -403,33 +373,33 @@ void causticTextures::draw(int xlo, int xhi, int zlo, int zhi){
 	for(j=zlo; j<zhi; j++){
 		// red
 		mult = 1.0f - refractionMult / float(geoRes);
-		glBegin(GL_TRIANGLE_STRIP);
+		renderer->begin(HS_TRIANGLE_STRIP);
 		for(i=xlo; i<=xhi; i++){
-			glColor3f(intensity[i][j+1], 0.0f, 0.0f);
-			glVertex3f(x[i] + xz[i][j+1][0] * mult, 0.0f, z[j+1] + xz[i][j+1][1] * mult);
-			glColor3f(intensity[i][j], 0.0f, 0.0f);
-			glVertex3f(x[i] + xz[i][j][0] * mult, 0.0f, z[j] + xz[i][j][1] * mult);
+			renderer->color4f(intensity[i][j+1], 0.0f, 0.0f, 1.0f);
+			renderer->vertex3f(x[i] + xz[i][j+1][0] * mult, 0.0f, z[j+1] + xz[i][j+1][1] * mult);
+			renderer->color4f(intensity[i][j], 0.0f, 0.0f, 1.0f);
+			renderer->vertex3f(x[i] + xz[i][j][0] * mult, 0.0f, z[j] + xz[i][j][1] * mult);
 		}
-		glEnd();
+		renderer->end();
 		// green
-		glBegin(GL_TRIANGLE_STRIP);
+		renderer->begin(HS_TRIANGLE_STRIP);
 		for(i=xlo; i<=xhi; i++){
-			glColor3f(0.0f, intensity[i][j+1], 0.0f);
-			glVertex3f(x[i] + xz[i][j+1][0], 0.0f, z[j+1] + xz[i][j+1][1]);
-			glColor3f(0.0f, intensity[i][j], 0.0f);
-			glVertex3f(x[i] + xz[i][j][0], 0.0f, z[j] + xz[i][j][1]);
+			renderer->color4f(0.0f, intensity[i][j+1], 0.0f, 1.0f);
+			renderer->vertex3f(x[i] + xz[i][j+1][0], 0.0f, z[j+1] + xz[i][j+1][1]);
+			renderer->color4f(0.0f, intensity[i][j], 0.0f, 1.0f);
+			renderer->vertex3f(x[i] + xz[i][j][0], 0.0f, z[j] + xz[i][j][1]);
 		}
-		glEnd();
+		renderer->end();
 		// blue
 		mult = 1.0f + refractionMult / float(geoRes);
-		glBegin(GL_TRIANGLE_STRIP);
+		renderer->begin(HS_TRIANGLE_STRIP);
 		for(i=xlo; i<=xhi; i++){
-			glColor3f(0.0f, 0.0f, intensity[i][j+1]);
-			glVertex3f(x[i] + xz[i][j+1][0] * mult, 0.0f, z[j+1] + xz[i][j+1][1] * mult);
-			glColor3f(0.0f, 0.0f, intensity[i][j]);
-			glVertex3f(x[i] + xz[i][j][0] * mult, 0.0f, z[j] + xz[i][j][1] * mult);
+			renderer->color4f(0.0f, 0.0f, intensity[i][j+1], 1.0f);
+			renderer->vertex3f(x[i] + xz[i][j+1][0] * mult, 0.0f, z[j+1] + xz[i][j+1][1] * mult);
+			renderer->color4f(0.0f, 0.0f, intensity[i][j], 1.0f);
+			renderer->vertex3f(x[i] + xz[i][j][0] * mult, 0.0f, z[j] + xz[i][j][1] * mult);
 		}
-		glEnd();
+		renderer->end();
 	}
 }
 

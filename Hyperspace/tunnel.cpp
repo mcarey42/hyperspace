@@ -19,12 +19,8 @@
  */
 
 
-#ifdef WIN32
-	#include <windows.h>
-#endif
 #include <Hyperspace/tunnel.h>
 #include <math.h>
-#include <OpenGL/gl.h>
 #include <rsMath/rsMath.h>
 #include <Rgbhsl/Rgbhsl.h>
 
@@ -78,7 +74,7 @@ tunnel::~tunnel(){
 }
 
 
-void tunnel::make(float frameTime, bool dShaders){
+void tunnel::make(float frameTime){
 	int i, j, k;
 
 	widthOffset += frameTime * 1.5f;
@@ -112,8 +108,8 @@ void tunnel::make(float frameTime, bool dShaders){
 	rsVec vert;
 	rsMatrix rotMat;
 	float hsl[3];
-	const float texcoordmult = (dShaders > 0) ? 1.0f : 2.0f;
-	const float max_saturation = (dShaders > 0) ? 0.1f : 0.4f;
+	const float texcoordmult = 1.0f;
+	const float max_saturation = 0.1f;
 	for(k=0; k<numSections; k++){
 		// create new vertex data for this section
 		for(i=0; i<=resolution; i++){
@@ -172,42 +168,19 @@ void tunnel::make(float frameTime, bool dShaders){
 }
 
 
-void tunnel::draw(){
-	int i, j, k;
-
-	for(k=0; k<numSections; k++){
-		for(i=0; i<resolution; i++){
-			glBegin(GL_TRIANGLE_STRIP);
-			for(j=0; j<=resolution; j++){
-				glColor3fv(c[k][i+1][j]);
-				glTexCoord2fv(t[k][i+1][j]);
-				glVertex3fv(v[k][i+1][j]);
-				glColor3fv(c[k][i][j]);
-				glTexCoord2fv(t[k][i][j]);
-				glVertex3fv(v[k][i][j]);
-			}
-			glEnd();
-		}
-	}
-}
-
-
-// specialty drawing function for when using shaders.
-// lerp goes into color alpha and determines blend between
-// texture frames.
-void tunnel::draw(float lerp){
+void tunnel::draw(float lerp, HSRenderer* renderer){
 	for(int k=0; k<numSections; k++){
 		for(int i=0; i<resolution; i++){
-			glBegin(GL_TRIANGLE_STRIP);
+			renderer->begin(HS_TRIANGLE_STRIP);
 			for(int j=0; j<=resolution; j++){
-				glColor4f(c[k][i+1][j][0], c[k][i+1][j][1], c[k][i+1][j][2], lerp);
-				glTexCoord2fv(t[k][i+1][j]);
-				glVertex3fv(v[k][i+1][j]);
-				glColor4f(c[k][i][j][0], c[k][i][j][1], c[k][i][j][2], lerp);
-				glTexCoord2fv(t[k][i][j]);
-				glVertex3fv(v[k][i][j]);
+				renderer->color4f(c[k][i+1][j][0], c[k][i+1][j][1], c[k][i+1][j][2], lerp);
+				renderer->texCoord2f(t[k][i+1][j][0], t[k][i+1][j][1]);
+				renderer->vertex3fv(v[k][i+1][j]);
+				renderer->color4f(c[k][i][j][0], c[k][i][j][1], c[k][i][j][2], lerp);
+				renderer->texCoord2f(t[k][i][j][0], t[k][i][j][1]);
+				renderer->vertex3fv(v[k][i][j]);
 			}
-			glEnd();
+			renderer->end();
 		}
 	}
 }

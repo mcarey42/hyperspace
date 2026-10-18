@@ -25,6 +25,7 @@
 
 
 #include "splinePath.h"
+#include "HSRenderer.h"
 
 
 
@@ -52,9 +53,9 @@ public:
 
 	tunnel(splinePath* sp, int res);
 	~tunnel();
-	void make(float frameTime, bool dShaders);
-	void draw();
-	void draw(float lerp);
+	void make(float frameTime);
+	// lerp goes into color alpha and determines blend between texture frames.
+	void draw(float lerp, HSRenderer* renderer);
 };
 
 

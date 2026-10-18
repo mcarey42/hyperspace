@@ -218,9 +218,20 @@ void draw(HyperspaceSaverSettings *inSettings){
 
 	// alpha component gets normalmap lerp value
 	const float lerp = textureTime / texFrameTime;
-	(void)lerp;	// used once goo/tunnel land in Phase 2.4-2.5
+	(void)lerp;	// used by goo once it lands in Phase 2.5
 
-	// TODO(Phase 2.5): starburst. TODO(Phase 2.4): tunnel.
+	// TODO(Phase 2.5): starburst.
+
+	// draw tunnel
+	if(inSettings->dUseTunnels){
+		inSettings->theTunnel->make(inSettings->frameTime);
+		inSettings->renderer->setPipeline(HS_PIPELINE_TUNNEL);
+		inSettings->renderer->setCullMode(HS_CULL_BACK);
+		inSettings->renderer->bindTexture(1, inSettings->theCausticTextures->caustictex[(inSettings->whichTexture + 1) % inSettings->numAnimTexFrames]);
+		inSettings->renderer->bindTexture(0, inSettings->theCausticTextures->caustictex[inSettings->whichTexture]);
+		inSettings->theTunnel->draw(lerp, inSettings->renderer);
+		inSettings->renderer->setCullMode(HS_CULL_NONE);
+	}
 
 	// draw sun with lens flare
 	inSettings->renderer->setFog(inSettings->depth * 0.7f, inSettings->depth, false);
@@ -326,6 +337,17 @@ void initSaver(HyperspaceSaverSettings *inSettings){
 
 	inSettings->thePath = new splinePath((inSettings->dDepth * 2) + 6);
 
+	if(inSettings->dUseTunnels){
+		inSettings->theTunnel = new tunnel(inSettings->thePath, 20);
+		// Unlike the original (which deferred this to the first draw() call because
+		// building these textures required reading back the visible framebuffer),
+		// Metal renders them directly into offscreen textures, so this can happen here.
+		inSettings->theCausticTextures = new causticTextures(8, inSettings->numAnimTexFrames, 100, 256, 1.0f, 0.01f, 20.0f, inSettings->renderer);
+		// causticTextures's constructor repoints the renderer's projection matrix at its
+		// own ortho setup while it draws; put the real camera projection back.
+		inSettings->renderer->setProjectionMatrix(inSettings->projMat);
+	}
+
 	// To avoid popping, depth, which will be used for fogging, is set to
 	// dDepth * goo grid size - size of one goo cubelet
 	inSettings->depth = float(inSettings->dDepth) * 2.0f - 2.0f / float(inSettings->dResolution);
@@ -377,6 +399,10 @@ void cleanUp(HyperspaceSaverSettings *inSettings){
 	delete inSettings->sunStar;
 	for(int i=0; i<4; i++)
 		inSettings->renderer->destroyTexture(inSettings->flaretex[i]);
+	if(inSettings->dUseTunnels){
+		delete inSettings->theTunnel;
+		delete inSettings->theCausticTextures;
+	}
 	delete inSettings->thePath;
 	inSettings->first = 1;
 }
