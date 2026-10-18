@@ -19,32 +19,11 @@
  */
 
 
-#ifdef WIN32
-#include <windows.h>
-#include <Hyperspace/extensions.h>
-#endif
-
 #include <Hyperspace/starBurst.h>
 #include <Hyperspace/wavyNormalCubeMaps.h>
 #include <Hyperspace/flare.h>
+#include <Hyperspace/HSRenderer.h>
 #include <rsMath/rsMath.h>
-#include <OpenGL/gl.h>
-#include <OpenGL/glu.h>
-
-
-
-/*extern int xsize, ysize;
-extern float aspectRatio;
-extern float frameTime;
-extern float camPos[3];
-extern int numAnimTexFrames;
-extern wavyNormalCubeMaps* theWNCM;
-extern unsigned int nebulatex;
-extern unsigned int goo_vp, goo_fp;
-extern int whichTexture;
-extern float depth;*/
-extern GLhandleARB gooProgram;
-extern GLhandleARB tunnelProgram;
 
 
 starBurst::starBurst(){
@@ -70,35 +49,54 @@ starBurst::starBurst(){
 		stars_velocity[i][2] = vel[2] * normalizer;
 	}
 
+	// Precompute the unit sphere once, replacing the original's GL_TRIANGLE_STRIP display
+	// list. Each of the 32 latitude bands keeps its own 33 vertex pairs (not shared with
+	// neighboring bands), matching the original's redundant immediate-mode vertex emission
+	// exactly; the strip-to-triangle-list expansion below is the standard one (triangle k
+	// of a strip is vertices k, k+1, k+2), which preserves the original's winding.
 	float xyz[3];
 	float ci, si, cj, sj, cjj, sjj;
-	call_list = glGenLists(1);
-	glNewList(call_list, GL_COMPILE);
-		for(j=0; j<32; j++){
-			cj = cosf(float(j) * RS_PIx2 / 32.0f);
-			sj = sinf(float(j) * RS_PIx2 / 32.0f);
-			cjj = cosf(float(j+1) * RS_PIx2 / 32.0f);
-			sjj = sinf(float(j+1) * RS_PIx2 / 32.0f);
-			glBegin(GL_TRIANGLE_STRIP);
-				for(i=0; i<=32; i++){
-					ci = cosf(float(i) * RS_PIx2 / 32.0f);
-					si = sinf(float(i) * RS_PIx2 / 32.0f);
-					xyz[0] = sj * ci;
-					xyz[1] = cj;
-					xyz[2] = sj * si;
-					glNormal3fv(xyz);
-					glVertex3fv(xyz);
-					xyz[0] = sjj * ci;
-					xyz[1] = cjj;
-					xyz[2] = sjj * si;
-					glNormal3fv(xyz);
-					glVertex3fv(xyz);
-				}
-			glEnd();
+	for(j=0; j<32; j++){
+		cj = cosf(float(j) * RS_PIx2 / 32.0f);
+		sj = sinf(float(j) * RS_PIx2 / 32.0f);
+		cjj = cosf(float(j+1) * RS_PIx2 / 32.0f);
+		sjj = sinf(float(j+1) * RS_PIx2 / 32.0f);
+		const unsigned int bandStart = (unsigned int)(sphereVertices.size() / 6);
+		for(i=0; i<=32; i++){
+			ci = cosf(float(i) * RS_PIx2 / 32.0f);
+			si = sinf(float(i) * RS_PIx2 / 32.0f);
+			xyz[0] = sj * ci;
+			xyz[1] = cj;
+			xyz[2] = sj * si;
+			// normal == position on a unit sphere
+			sphereVertices.insert(sphereVertices.end(), {xyz[0], xyz[1], xyz[2], xyz[0], xyz[1], xyz[2]});
+			xyz[0] = sjj * ci;
+			xyz[1] = cjj;
+			xyz[2] = sjj * si;
+			sphereVertices.insert(sphereVertices.end(), {xyz[0], xyz[1], xyz[2], xyz[0], xyz[1], xyz[2]});
 		}
-	glEndList();
+		const unsigned int bandVertexCount = 2 * 33;
+		for(unsigned int k=0; k+2<bandVertexCount; k++){
+			sphereIndices.push_back(bandStart + k);
+			sphereIndices.push_back(bandStart + k + 1);
+			sphereIndices.push_back(bandStart + k + 2);
+		}
+	}
 
 	size = 4.0f;
+}
+
+
+// Declared but never defined even in the original, since nothing there ever deleted a
+// starBurst (it leaked instead); defined now that cleanUp() actually does.
+starBurst::~starBurst(){
+	for(int i=0; i<SB_NUM_STARS; i++){
+		delete stars[i];
+		delete[] stars_velocity[i];
+	}
+	delete[] stars;
+	delete[] stars_active;
+	delete[] stars_velocity;
 }
 
 
@@ -139,8 +137,8 @@ void starBurst::drawStars(HyperspaceSaverSettings *inSettings){
 	float distance;
 
 	// draw stars
-	glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, inSettings->flaretex[0]);
+	inSettings->renderer->setPipeline(HS_PIPELINE_SPRITE);
+	inSettings->renderer->bindTexture(0, inSettings->flaretex[0]);
 	for(i=0; i<SB_NUM_STARS; i++){
 		stars[i]->pos[0] += stars_velocity[i][0] * inSettings->frameTime;
 		stars[i]->pos[1] += stars_velocity[i][1] * inSettings->frameTime;
@@ -156,51 +154,9 @@ void starBurst::drawStars(HyperspaceSaverSettings *inSettings){
 }
 
 
-void starBurst::draw(HyperspaceSaverSettings *inSettings){
-	drawStars(inSettings);
-	
-	size += inSettings->frameTime * 0.5f;
-	if(size >= 3.0f)
-		return;
-
-	// draw flare
-	float brightness = 1.0f - (size * 0.333333f);
-	if(brightness > 0.0f){
-		float p[3];
-		p[0] = pos[0];
-		p[1] = pos[1];
-		p[2] = pos[2];
-		flare(p, 1.0f, 1.0f, 1.0f, brightness, inSettings);
-	}
-
-	glMatrixMode(GL_MODELVIEW);
-	glPushMatrix();
-	glTranslatef(pos[0], pos[1], pos[2]);
-	glScalef(size, size, size);
-
-	// draw sphere
-	glBindTexture(GL_TEXTURE_2D, inSettings->nebulatex);
-	glEnable(GL_TEXTURE_2D);
-	glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
-	glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
-	glEnable(GL_TEXTURE_GEN_S);
-	glEnable(GL_TEXTURE_GEN_T);
-
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-	glEnable(GL_BLEND);
-	glColor4f(brightness, brightness, brightness, 1.0f);
-	glCallList(call_list);
-
-	glDisable(GL_TEXTURE_GEN_S);
-	glDisable(GL_TEXTURE_GEN_T);
-
-	glPopMatrix();
-}
-
-
 void starBurst::draw(float lerp, HyperspaceSaverSettings *inSettings){
 	drawStars(inSettings);
-	
+
 	size += inSettings->frameTime * 0.5f;
 	if(size >= 3.0f)
 		return;
@@ -215,29 +171,19 @@ void starBurst::draw(float lerp, HyperspaceSaverSettings *inSettings){
 		flare(p, 1.0f, 1.0f, 1.0f, brightness, inSettings);
 	}
 
-	glMatrixMode(GL_MODELVIEW);
-	glPushMatrix();
-	glTranslatef(pos[0], pos[1], pos[2]);
-	glScalef(size, size, size);
+	HSRenderer *renderer = inSettings->renderer;
+	renderer->matrixPush();
+	renderer->translate(pos[0], pos[1], pos[2]);
+	renderer->scale(size, size, size);
 
 	// draw sphere
-	glDisable(GL_TEXTURE_2D);
-	glEnable(GL_TEXTURE_CUBE_MAP_ARB);
-	glActiveTextureARB(GL_TEXTURE2_ARB);
-	glBindTexture(GL_TEXTURE_CUBE_MAP_ARB, inSettings->nebulatex);
-	glActiveTextureARB(GL_TEXTURE1_ARB);
-	glBindTexture(GL_TEXTURE_CUBE_MAP_ARB, inSettings->theWNCM->texture[(inSettings->whichTexture + 1) % inSettings->numAnimTexFrames]);
-	glActiveTextureARB(GL_TEXTURE0_ARB);
-	glBindTexture(GL_TEXTURE_CUBE_MAP_ARB, inSettings->theWNCM->texture[inSettings->whichTexture]);
-	glUseProgramObjectARB(gooProgram);
+	renderer->setPipeline(HS_PIPELINE_GOO);
+	renderer->bindTexture(0, inSettings->theWNCM->texture[inSettings->whichTexture]);
+	renderer->bindTexture(1, inSettings->theWNCM->texture[(inSettings->whichTexture + 1) % inSettings->numAnimTexFrames]);
+	renderer->bindTexture(2, inSettings->nebulatex);
+	renderer->color4f(brightness, brightness, brightness, lerp);
+	renderer->drawIndexedMesh(sphereVertices.data(), (uint32_t)(sphereVertices.size() / 6),
+							   sphereIndices.data(), (uint32_t)sphereIndices.size());
 
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-	glEnable(GL_BLEND);
-	glColor4f(brightness, brightness, brightness, lerp);
-	glCallList(call_list);
-
-	glDisable(GL_TEXTURE_CUBE_MAP_ARB);
-	glUseProgramObjectARB(0);
-
-	glPopMatrix();
+	renderer->matrixPop();
 }

@@ -24,12 +24,7 @@
 
 
 
-#ifdef WIN32
-	#include <windows.h>
-#endif
-#include <OpenGL/gl.h>
-#include <OpenGL/glu.h>
-#include <OpenGL/glext.h>
+#include "HSRenderer.h"
 
 
 
@@ -38,19 +33,22 @@ public:
 	int numFrames;
 	int texSize;
 
-	GLuint* texture;
+	HSTextureRef* texture;
 
 	// Phase must be 0.0 at frame 0
 	// and phase must be 1.0 at frame numFrames
 	// so that cubemaps have temporal continuity.
 	float phase;
 
-	wavyNormalCubeMaps(int frames, int size);
-	~wavyNormalCubeMaps(){}
+	wavyNormalCubeMaps(int frames, int size, HSRenderer* renderer);
+	~wavyNormalCubeMaps();
 	// Pass a point on a unit sphere and receive the corresponding
 	// normal at that point on the sphere
 	void wavyfunc(float* point, float* normal);
 	inline void normalize(float* vector);
+
+private:
+	HSRenderer* renderer;
 };
 
 

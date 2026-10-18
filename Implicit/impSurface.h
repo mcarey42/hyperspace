@@ -23,71 +23,29 @@
 #define IMPSURFACE_H
 
 
-#ifdef WIN32
-	#include <windows.h>
-#endif
 #include <vector>
-#include <OpenGL/OpenGL.h>
-#include <OpenGL/gl.h>
-
-
-#define USE_UNSIGNED_SHORT 0  // use short instead of int when passing indices to draw calls
-#define USE_TRIANGLE_STRIPS 0  // use triangle strips instead of triangles
+#include <Hyperspace/HSRenderer.h>
 
 
 class impSurface{
 private:
 	unsigned int index_offset;
 	unsigned int vertex_offset;
-	unsigned int num_tristrips;
-	std::vector<unsigned int> triStripLengths;
 	std::vector<float> vertices;
-	size_t vertex_data_size;
-#if USE_UNSIGNED_SHORT
-	std::vector<unsigned short> indices;
-#else
 	std::vector<unsigned int> indices;
-#endif
-
-	// display list
-	//GLuint mDisplayList;
-
-	// vbo stuff
-	bool mUseVBOs;  // Default to true.  If extensions aren't found, set to false and use draw arrays.
-	bool mCompile;  // If there is new data, set this to true to compile new VBO buffers.
-	GLuint vbo_array_id;
-	GLuint vbo_index_id;
-	std::vector<GLvoid*> vbo_index_offsets;
-#ifdef WIN32
-	// extensions necessary for VBOs
-	static PFNGLMULTIDRAWELEMENTSPROC glMultiDrawElements;
-	static PFNGLGENBUFFERSPROC glGenBuffers;
-	static PFNGLDELETEBUFFERSPROC glDeleteBuffers;
-	static PFNGLBINDBUFFERPROC glBindBuffer;
-	static PFNGLBUFFERDATAPROC glBufferData;
-#endif
 
 public:
 	impSurface();
 	~impSurface();
 
-#ifdef WIN32
-	int queryExtension(char* name);
-	void* getProcAddr(char* name);
-#endif
-
 	// Set data counts to 0
 	void reset();
 
 	// Add data to surface
-#ifdef USE_TRIANGLE_STRIPS
-	void addTriStripLength(unsigned char length);
-#endif
 	void addIndex(unsigned int index);
 	void addVertex(float* data);  // provide array of 6 floats (normal, position)
 
-	void draw();
-	//void draw_wireframe();
+	void draw(HSRenderer* renderer);
 };
 
 

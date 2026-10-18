@@ -40,6 +40,8 @@
 #include <rsText/rsText.h>
 #include <math.h>
 #include <time.h>
+#include <vector>
+#include <stdint.h>
 #include <OpenGL/gl.h>
 #include <OpenGL/glu.h>
 #include <rsMath/rsMath.h>
@@ -174,7 +176,14 @@ void draw(HyperspaceSaverSettings *inSettings){
 	inSettings->renderer->getCurrentMatrix(inSettings->modelMat);
 	inSettings->unroll = camRoll[0] * RS_RAD2DEG;
 
-	// TODO(Phase 2.5): goo update.
+	if(inSettings->dUseGoo){
+		// calculate diagonal fov
+		float diagFov = 0.5f * float(inSettings->dFov) / RS_RAD2DEG;
+		diagFov = tanf(diagFov);
+		diagFov = sqrtf(diagFov * diagFov + (diagFov * inSettings->aspectRatio * diagFov * inSettings->aspectRatio));
+		diagFov = 2.0f * atanf(diagFov);
+		inSettings->theGoo->update(inSettings->camPos[0], inSettings->camPos[2], pathAngle + camHeading[0], diagFov, inSettings);
+	}
 
 	// draw stars
 	inSettings->renderer->setPipeline(HS_PIPELINE_SPRITE);
@@ -218,9 +227,40 @@ void draw(HyperspaceSaverSettings *inSettings){
 
 	// alpha component gets normalmap lerp value
 	const float lerp = textureTime / texFrameTime;
-	(void)lerp;	// used by goo once it lands in Phase 2.5
 
-	// TODO(Phase 2.5): starburst.
+	// draw goo
+	if(inSettings->dUseGoo){
+		static float goo_rgb_phase[3] = {-0.1f, -0.1f, -0.1f};
+		static float goo_rgb_speed[3] = {rsRandf(0.02f) + 0.02f, rsRandf(0.02f) + 0.02f, rsRandf(0.02f) + 0.02f};
+		float goo_rgb[4];
+		for(int i=0; i<3; i++){
+			goo_rgb_phase[i] += goo_rgb_speed[i] * inSettings->frameTime;
+			if(goo_rgb_phase[i] >= RS_PIx2)
+				goo_rgb_phase[i] -= RS_PIx2;
+			goo_rgb[i] = sinf(goo_rgb_phase[i]);
+			if(goo_rgb[i] < 0.0f)
+				goo_rgb[i] = 0.0f;
+		}
+		goo_rgb[3] = lerp;
+		inSettings->renderer->setPipeline(HS_PIPELINE_GOO);
+		inSettings->renderer->bindTexture(0, inSettings->theWNCM->texture[inSettings->whichTexture]);
+		inSettings->renderer->bindTexture(1, inSettings->theWNCM->texture[(inSettings->whichTexture + 1) % inSettings->numAnimTexFrames]);
+		inSettings->renderer->bindTexture(2, inSettings->nebulatex);
+		inSettings->renderer->color4f(goo_rgb[0], goo_rgb[1], goo_rgb[2], goo_rgb[3]);
+		inSettings->theGoo->draw(inSettings->renderer);
+	}
+
+	// update starburst
+	static float starBurstTime = 300.0f;  // burst after 5 minutes
+	starBurstTime -= inSettings->frameTime;
+	if(starBurstTime <= 0.0f){
+		float pos[] = {inSettings->camPos[0] + (pathDir[0] * inSettings->depth * (0.5f + rsRandf(0.5f))),
+			rsRandf(2.0f) - 1.0f,
+			inSettings->camPos[2] + (pathDir[2] * inSettings->depth * (0.5f + rsRandf(0.5f)))};
+		inSettings->theStarBurst->restart(pos);  // it won't actually restart unless it's ready to
+		starBurstTime = rsRandf(240.0f) + 60.0f;  // burst again within 1-5 minutes
+	}
+	inSettings->theStarBurst->draw(lerp, inSettings);
 
 	// draw tunnel
 	if(inSettings->dUseTunnels){
@@ -352,7 +392,8 @@ void initSaver(HyperspaceSaverSettings *inSettings){
 	// dDepth * goo grid size - size of one goo cubelet
 	inSettings->depth = float(inSettings->dDepth) * 2.0f - 2.0f / float(inSettings->dResolution);
 
-	// TODO(Phase 2.5): goo.
+	if(inSettings->dUseGoo)
+		inSettings->theGoo = new goo(inSettings->dResolution, inSettings->depth);
 
 	inSettings->stars = new stretchedParticle*[inSettings->dStars];
 	for(int i=0; i<inSettings->dStars; i++){
@@ -383,7 +424,30 @@ void initSaver(HyperspaceSaverSettings *inSettings){
 	inSettings->sunStar->pos[2] = 0.0f;
 	inSettings->sunStar->fov = float(inSettings->dFov);
 
-	// TODO(Phase 2.5): starburst, nebula cube map.
+	inSettings->theStarBurst = new starBurst;
+	for(int i=0; i<SB_NUM_STARS; i++)
+		inSettings->theStarBurst->stars[i]->radius = rsRandf(float(inSettings->dStarSize) * 0.001f) + float(inSettings->dStarSize) * 0.001f;
+
+	inSettings->numAnimTexFrames = 20;
+
+	// The original's nebula cube map uses the same baked RGB bitmap (nebulamap.h) on all
+	// six faces; pad it to RGBA once here since HSRenderer textures are always RGBA8.
+	{
+		std::vector<uint8_t> rgba(NEBULAMAPSIZE * NEBULAMAPSIZE * 4);
+		for(int i=0; i<NEBULAMAPSIZE; i++){
+			for(int j=0; j<NEBULAMAPSIZE; j++){
+				uint8_t *dst = &rgba[(i + j * NEBULAMAPSIZE) * 4];
+				dst[0] = nebulamap[i][j][0];
+				dst[1] = nebulamap[i][j][1];
+				dst[2] = nebulamap[i][j][2];
+				dst[3] = 255;
+			}
+		}
+		const uint8_t *faces[6] = {rgba.data(), rgba.data(), rgba.data(), rgba.data(), rgba.data(), rgba.data()};
+		inSettings->nebulatex = inSettings->renderer->createTextureCube(NEBULAMAPSIZE, faces, true);
+	}
+
+	inSettings->theWNCM = new wavyNormalCubeMaps(inSettings->numAnimTexFrames, 128, inSettings->renderer);
 
 	inSettings->renderer->setFog(inSettings->depth * 0.7f, inSettings->depth, true);
 
@@ -392,7 +456,6 @@ void initSaver(HyperspaceSaverSettings *inSettings){
 
 
 void cleanUp(HyperspaceSaverSettings *inSettings){
-	// TODO(Phase 2.5): free goo/starburst/nebula once they're allocated again.
 	for(int i=0; i<inSettings->dStars; i++)
 		delete inSettings->stars[i];
 	delete [] inSettings->stars;
@@ -403,6 +466,11 @@ void cleanUp(HyperspaceSaverSettings *inSettings){
 		delete inSettings->theTunnel;
 		delete inSettings->theCausticTextures;
 	}
+	if(inSettings->dUseGoo)
+		delete inSettings->theGoo;
+	delete inSettings->theStarBurst;
+	delete inSettings->theWNCM;
+	inSettings->renderer->destroyTexture(inSettings->nebulatex);
 	delete inSettings->thePath;
 	inSettings->first = 1;
 }

@@ -23,6 +23,7 @@
 @end
 
 static const size_t kVertexBufferCapacity = 4 * 1024 * 1024;	// 4MB, reset every frame
+static const size_t kIndexBufferCapacity = 1 * 1024 * 1024;	// 1MB (262144 uint32 indices), reset every frame
 static const size_t kVertexStride = sizeof(float) * 14;	// clipPosition(4) + eyePosition(3) + attrib3(3) + color(4)
 
 static const int kMaxMatrixStackDepth = 32;
@@ -150,6 +151,11 @@ public:
 	// Per-frame dynamic vertex buffer: a simple bump allocator reset every beginFrame.
 	id<MTLBuffer> vertexBuffer = nil;
 	size_t vertexBufferOffset = 0;
+
+	// Same bump-allocator scheme, for drawIndexedMesh's index data (goo's marching-cubes
+	// tiles, and later the starburst sphere).
+	id<MTLBuffer> indexBuffer = nil;
+	size_t indexBufferOffset = 0;
 
 	// Fog uniforms, matching HSFogUniforms in Shaders.metal.
 	id<MTLBuffer> fogBuffer = nil;
@@ -329,9 +335,12 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 
 	id<MTLBuffer> vertexBuffer = [device newBufferWithLength:kVertexBufferCapacity options:MTLResourceStorageModeShared];
 	vertexBuffer.label = @"HSRenderer vertex ring";
+	id<MTLBuffer> indexBuffer = [device newBufferWithLength:kIndexBufferCapacity options:MTLResourceStorageModeShared];
+	indexBuffer.label = @"HSRenderer index ring";
 	id<MTLBuffer> fogBuffer = [device newBufferWithLength:32 options:MTLResourceStorageModeShared];
 	fogBuffer.label = @"HSRenderer fog uniforms";
 	[residencySet addAllocation:vertexBuffer];
+	[residencySet addAllocation:indexBuffer];
 	[residencySet addAllocation:fogBuffer];
 	[residencySet commit];
 
@@ -345,6 +354,7 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	impl->samplerClamp = samplerClamp;
 	impl->argTable = argTable;
 	impl->vertexBuffer = vertexBuffer;
+	impl->indexBuffer = indexBuffer;
 	impl->fogBuffer = fogBuffer;
 
 	return true;
@@ -403,6 +413,7 @@ bool HSRenderer::beginFrame()
 	[impl->encoder setCullMode:MTLCullModeNone];
 	impl->currentCullMode = HS_CULL_NONE;
 	impl->vertexBufferOffset = 0;
+	impl->indexBufferOffset = 0;
 	return true;
 }
 
@@ -693,8 +704,65 @@ void HSRenderer::end()
 	impl->vertexAccumulator.clear();
 }
 
+// Bypasses the immediate-mode begin/vertex*/end batcher above: goo tiles (and the starburst
+// sphere) hand over a whole N3F_V3F mesh at once, matching the original's VBO draw calls.
+// attrib3 carries the object-space normal unchanged — like the sprite/tunnel path, this is a
+// direct port of the original GLSL goo shader, which used gl_Normal (object space, no normal
+// matrix) as a cube lookup direction. That's only correct because goo tiles are only ever
+// pure-translated (never rotated/scaled) onto the model stack; if that ever changes, this needs
+// a proper normal-matrix transform.
 void HSRenderer::drawIndexedMesh(const float *interleavedNormalPosition, uint32_t vertexCount,
-								  const uint32_t *indices, uint32_t indexCount) {}
+								  const uint32_t *indices, uint32_t indexCount)
+{
+	if (vertexCount == 0 || indexCount == 0 || !impl->encoder)
+		return;
+
+	size_t vertexByteSize = size_t(vertexCount) * 14 * sizeof(float);
+	size_t indexByteSize = size_t(indexCount) * sizeof(uint32_t);
+	if (impl->vertexBufferOffset + vertexByteSize > kVertexBufferCapacity
+		|| impl->indexBufferOffset + indexByteSize > kIndexBufferCapacity)
+		return;	// out of ring space for this frame; drop the draw rather than corrupt memory
+
+	float *dest = reinterpret_cast<float *>(static_cast<uint8_t *>(impl->vertexBuffer.contents) + impl->vertexBufferOffset);
+	for (uint32_t i = 0; i < vertexCount; ++i)
+	{
+		const float *src = interleavedNormalPosition + i * 6;	// normal.xyz, position.xyz
+		double local[4] = {double(src[3]), double(src[4]), double(src[5]), 1.0};
+		double eye[4], clip[4];
+		hsMatVecMul(impl->modelStack[impl->stackTop], local, eye);
+		hsMatVecMul(impl->projectionMatrix, eye, clip);
+
+		float *v = dest + i * 14;
+		v[0] = float(clip[0]); v[1] = float(clip[1]); v[2] = float(clip[2]); v[3] = float(clip[3]);
+		v[4] = float(eye[0]); v[5] = float(eye[1]); v[6] = float(eye[2]);
+		v[7] = src[0]; v[8] = src[1]; v[9] = src[2];
+		v[10] = impl->currentColor[0]; v[11] = impl->currentColor[1]; v[12] = impl->currentColor[2]; v[13] = impl->currentColor[3];
+	}
+
+	std::memcpy(static_cast<uint8_t *>(impl->indexBuffer.contents) + impl->indexBufferOffset, indices, indexByteSize);
+
+	[impl->argTable setAddress:(impl->vertexBuffer.gpuAddress + impl->vertexBufferOffset) atIndex:0];
+	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
+	[impl->argTable setSamplerState:impl->samplerClamp.gpuResourceID atIndex:0];
+	for (int unit = 0; unit < 3; ++unit)
+	{
+		auto it = impl->textures.find(impl->boundTextures[unit]);
+		id<MTLTexture> tex = (it != impl->textures.end()) ? it->second : nil;
+		if (tex)
+			[impl->argTable setTexture:tex.gpuResourceID atIndex:unit];
+	}
+
+	[impl->encoder setRenderPipelineState:impl->gooPSO];
+	[impl->encoder setArgumentTable:impl->argTable atStages:MTLRenderStageVertex | MTLRenderStageFragment];
+	[impl->encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+								indexCount:indexCount
+								 indexType:MTLIndexTypeUInt32
+							   indexBuffer:(impl->indexBuffer.gpuAddress + impl->indexBufferOffset)
+							 indexBufferLength:indexByteSize];
+
+	impl->vertexBufferOffset += vertexByteSize;
+	impl->indexBufferOffset += indexByteSize;
+}
 
 HSTextureRef HSRenderer::createTexture2D(int width, int height, const uint8_t *rgba8, bool mipmapped)
 {
@@ -736,7 +804,52 @@ HSTextureRef HSRenderer::createTexture2D(int width, int height, const uint8_t *r
 	return ref;
 }
 
-HSTextureRef HSRenderer::createTextureCube(int size, const uint8_t *facesRGBA8[6], bool mipmapped) { return HS_INVALID_TEXTURE; }
+// Face order is +X,-X,+Y,-Y,+Z,-Z (slices 0-5), matching GL_TEXTURE_CUBE_MAP_POSITIVE_X etc. in
+// that same enum order — both APIs use this convention, so callers built against the original
+// GL face order need no reordering.
+HSTextureRef HSRenderer::createTextureCube(int size, const uint8_t *facesRGBA8[6], bool mipmapped)
+{
+	MTLTextureDescriptor *desc = [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+																						 size:size
+																					mipmapped:mipmapped];
+	desc.usage = MTLTextureUsageShaderRead;
+	id<MTLTexture> texture = [impl->device newTextureWithDescriptor:desc];
+	if (!texture)
+		return HS_INVALID_TEXTURE;
+
+	for (int face = 0; face < 6; ++face)
+	{
+		[texture replaceRegion:MTLRegionMake2D(0, 0, size, size)
+					mipmapLevel:0
+						  slice:face
+					  withBytes:facesRGBA8[face]
+					bytesPerRow:size * 4
+				  bytesPerImage:0];
+	}
+
+	if (mipmapped)
+	{
+		// Throwaway allocator: see createTexture2D's mipmap path for why this can't reuse one
+		// of the per-frame allocators.
+		id<MTL4CommandAllocator> mipAllocator = [impl->device newCommandAllocator];
+		impl->setupAllocators.push_back(mipAllocator);
+		id<MTL4CommandBuffer> cmdBuffer = [impl->device newCommandBuffer];
+		[cmdBuffer beginCommandBufferWithAllocator:mipAllocator];
+		id<MTL4ComputeCommandEncoder> blit = [cmdBuffer computeCommandEncoder];
+		[blit generateMipmapsForTexture:texture];
+		[blit endEncoding];
+		[cmdBuffer endCommandBuffer];
+		id<MTL4CommandBuffer> buffers[1] = {cmdBuffer};
+		[impl->queue commit:buffers count:1];
+	}
+
+	[impl->residencySet addAllocation:texture];
+	[impl->residencySet commit];
+
+	HSTextureRef ref = impl->nextTextureRef++;
+	impl->textures[ref] = texture;
+	return ref;
+}
 
 void HSRenderer::destroyTexture(HSTextureRef texture)
 {

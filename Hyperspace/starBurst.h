@@ -24,6 +24,7 @@
 
 
 
+#include <vector>
 #include "stretchedParticle.h"
 #include "Hyperspace.h"
 
@@ -39,7 +40,10 @@ public:
 	// stars only stay active while they're within viewing range
 	bool* stars_active;
 	float** stars_velocity;
-	unsigned int call_list;
+	// Precomputed unit sphere (N3F_V3F, normal == position), replacing the original's
+	// GL_TRIANGLE_STRIP display list — built once here and resubmitted via drawIndexedMesh.
+	std::vector<float> sphereVertices;
+	std::vector<unsigned int> sphereIndices;
 	float size;
 	float pos[3];
 
@@ -47,8 +51,7 @@ public:
 	~starBurst();
 	void restart(float* position);
 	void drawStars(HyperspaceSaverSettings *inSettings);
-	void draw(HyperspaceSaverSettings *inSettings);  // draw regular
-	void draw(float lerp, HyperspaceSaverSettings *inSettings);  // draw with shaders
+	void draw(float lerp, HyperspaceSaverSettings *inSettings);
 };
 
 

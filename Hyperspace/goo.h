@@ -24,14 +24,11 @@
 
 
 
-#ifdef WIN32
-	#include <windows.h>
-#endif
-#include <OpenGL/gl.h>
 #include <rsMath/rsMath.h>
 #include <list>
 #include <Implicit/impCubeVolume.h>
 #include <Implicit/impCrawlPoint.h>
+#include "HSRenderer.h"
 
 typedef struct HyperspaceSaverSettings;
 
@@ -62,7 +59,7 @@ public:
 	~goo();
 	void update(float x, float z, float heading, float fov, HyperspaceSaverSettings *inSettings);
 	static float function(float* position, void *contextInfo);
-	void draw();
+	void draw(HSRenderer* renderer);
 };
 
 
