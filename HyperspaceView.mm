@@ -26,7 +26,6 @@
 #import "HyperspaceView.h"
 #import "Hyperspace.h"
 #import "flare.h"
-#import <sys/time.h>
 
 @interface HyperspaceView (Private)
 - (void)readDefaults:(ScreenSaverDefaults *)inDefaults;
@@ -101,10 +100,8 @@
 - (void)viewDidMoveToWindow
 {
 	[super viewDidMoveToWindow];
-	if (@available(macOS 12.0, *))	// on Monterey and later, update the time interval for the window's screen's refresh rate
-	{
-		self.animationTimeInterval = self.window.screen.maximumRefreshInterval;
-	}
+	NSScreen *screen = self.window.screen;
+	self.animationTimeInterval = screen ? screen.minimumRefreshInterval : (1.0 / 60.0);
 }
 
 
@@ -117,7 +114,7 @@
         if (lMainScreen || !lMainScreenOnly)
         {
             initSaver(&lSettings);
-			gettimeofday(&timer.prev_tv, NULL);	// reset the timer
+			timer.reset();
         }
     }
 }
@@ -231,7 +228,6 @@
 	[inDefaults setInteger:lSettings.dResolution forKey:@"Resolution"];
 	[inDefaults setInteger:lSettings.dDepth forKey:@"Depth"];
 	[inDefaults setInteger:lSettings.dFov forKey:@"Fov"];
-	[inDefaults setBool:lSettings.dShaders forKey:@"UseShaders"];
 	[inDefaults setBool:lSettings.dUseGoo forKey:@"UseGoo"];
 	[inDefaults setBool:lSettings.dUseTunnels forKey:@"UseTunnels"];
 	[inDefaults setBool:lMainScreenOnly forKey:@"MainScreenOnly"];
@@ -242,6 +238,8 @@
 	{
 		[self stopAnimation];
 		[self startAnimation];
+		if (lView)	// re-derive the projection matrix, since initSaver() doesn't know the new FOV
+			reshape(int(lView.drawableSize.width), int(lView.drawableSize.height), &lSettings);
 	}
 	[NSApp endSheet:ibConfigureSheet];
 	[ibConfigureSheet orderOut:self];
@@ -283,9 +281,6 @@
 			lSettings.dFov = [sender intValue];
 			[ibFovTxt setIntValue:[sender intValue]];
 			break;
-		case 7:	// shaders
-			lSettings.dShaders = ([sender state] == NSControlStateValueOn ? true : false);
-			break;
 		case 8:	// main screen
 			lMainScreenOnly = ([sender state] == NSControlStateValueOn ? true : false);
 			break;
@@ -311,7 +306,6 @@
 	lSettings.dResolution = int([inDefaults integerForKey:@"Resolution"]);
 	lSettings.dDepth = int([inDefaults integerForKey:@"Depth"]);
 	lSettings.dFov = int([inDefaults integerForKey:@"Fov"]);
-	lSettings.dShaders = [inDefaults integerForKey:@"UseShaders"];
 	if ([inDefaults objectForKey:@"UseGoo"])
 		lSettings.dUseGoo = [inDefaults integerForKey:@"UseGoo"];
 	if ([inDefaults objectForKey:@"UseTunnels"])
@@ -334,7 +328,6 @@
 	[ibDepthTxt setIntValue:lSettings.dDepth];
 	[ibFov setIntValue:lSettings.dFov];
 	[ibFovTxt setIntValue:lSettings.dFov];
-	[ibShaderCbx setState:(lSettings.dShaders ? NSControlStateValueOn : NSControlStateValueOff)];
 	[ibGooCbx setState:(lSettings.dUseGoo ? NSControlStateValueOn : NSControlStateValueOff)];
 	[ibTunnelCbx setState:(lSettings.dUseTunnels ? NSControlStateValueOn : NSControlStateValueOff)];
 	[ibMainScreenOnlyCbx setState:(lMainScreenOnly ? NSControlStateValueOn : NSControlStateValueOff)];

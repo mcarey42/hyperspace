@@ -265,30 +265,6 @@
         }
       }
     },
-    "71.title" : {
-      "comment" : "Class = \"NSButtonCell\"; title = \"Enable pixel & vertex shaders (if available)\"; ObjectID = \"71\";",
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pixel- & Vertexshader aktivieren (wenn verfügbar)"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enable pixel & vertex shaders (if available)"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activer les ombres des pixels et des vertex (si disponible)"
-          }
-        }
-      }
-    },
     "72.title" : {
       "comment" : "Class = \"NSButtonCell\"; title = \"Main screen only\"; ObjectID = \"72\";",
       "extractionState" : "manual",

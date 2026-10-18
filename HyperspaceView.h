@@ -54,7 +54,6 @@
 	IBOutlet NSTextField *ibDepthTxt;
 	IBOutlet NSSlider *ibFov;
 	IBOutlet NSTextField *ibFovTxt;
-	IBOutlet NSButton *ibShaderCbx;
 	IBOutlet NSButton *ibGooCbx;
 	IBOutlet NSButton *ibTunnelCbx;
 	IBOutlet NSButton *ibMainScreenOnlyCbx;

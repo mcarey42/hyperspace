@@ -24,56 +24,38 @@
 
 
 
-#include <stdlib.h>
-#include <sys/time.h>
-#include <iostream>
+#include <chrono>
 
 
 class rsTimer{
 public:
 	// Time since last call to tick()
 	float elapsed_time;
-	// Time waited so far by wait()
-	float waited_time;
-	// Wait() would take a hair too long, if we didn't keep track of the
-	// extra time it was spending.  That's what wait_overhead is for.
-	float wait_function_overhead;
-	struct timeval prev_tv;
 
 	rsTimer(){
 		elapsed_time = 0.0f;
-		waited_time = 0.0f;
-		wait_function_overhead = 0.0f;
-		gettimeofday(&prev_tv, NULL);
+		reset();
 	}
 
-	~rsTimer(){}
+	// Resets the reference point used by tick(), without reporting elapsed time.
+	inline void reset(){
+		prev = std::chrono::steady_clock::now();
+	}
 
-	// return time elapsed since last call to tick()
+	// Return time elapsed since last call to tick() (or reset()), in seconds.
+	// Clamped to 0.1s so a long pause (e.g. sleep, a debugger stop) doesn't
+	// make the simulation jump forward.
 	inline float tick(){
-		struct timeval curr_tv;
-		gettimeofday(&curr_tv, NULL);
-		float elapsed_time = float(curr_tv.tv_sec - prev_tv.tv_sec)
-			+ ((curr_tv.tv_usec - prev_tv.tv_usec) * 0.000001f);
-		prev_tv = curr_tv;
+		std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+		elapsed_time = std::chrono::duration<float>(now - prev).count();
+		prev = now;
+		if(elapsed_time > 0.1f)
+			elapsed_time = 0.1f;
 		return elapsed_time;
 	}
 
-	// Wait until target_time has elapsed, then return.
-	// If you call this function after target_time has already elapsed,
-	// it will return immediately.  Think of target_time as a lower limit
-	// on frame time.
-	// Returns actual time elapsed since last call to wait().
-	inline float wait(float target_time){
-		waited_time = tick();
-		float actual_waited_time(waited_time + wait_function_overhead);
-		if(actual_waited_time < target_time){
-			usleep(useconds_t(1000000.0f * (target_time - actual_waited_time)));
-			waited_time += tick();
-		}
-		wait_function_overhead += 0.05f * (waited_time - target_time);
-		return waited_time;
-	}
+private:
+	std::chrono::steady_clock::time_point prev;
 };
 
 

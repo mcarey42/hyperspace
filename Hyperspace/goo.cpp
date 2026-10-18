@@ -145,8 +145,9 @@ float goo::function(float* position, void *contextInfo){
 		+ theGoo->c[2] * rsCosf(1.91f * px - 1.67f * pz)
 		+ theGoo->c[3] * rsCosf(1.53f * px + 1.11f * position[1] + 2.11f * pz)
 		// The last term creates a bubble around the eyepoint so it doesn't
-		// punch through the surface.
-		- 0.1f / (x * x + position[1] * position[1] + z * z);
+		// punch through the surface. The epsilon keeps this finite exactly
+		// at the eyepoint, where the denominator would otherwise be zero.
+		- 0.1f / (x * x + position[1] * position[1] + z * z + 1e-6f);
 }
 
 

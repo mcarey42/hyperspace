@@ -25,9 +25,6 @@
 #include <Rgbhsl/Rgbhsl.h>
 
 
-//extern int dShaders;
-
-
 tunnel::tunnel(splinePath* sp, int res){
 	int i, j, k;
 

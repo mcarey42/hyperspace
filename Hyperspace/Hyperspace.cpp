@@ -229,7 +229,6 @@ void setDefaults(HyperspaceSaverSettings *inSettings){
 	inSettings->dFov = 50;
 	inSettings->dUseTunnels = 1;
 	inSettings->dUseGoo = 1;
-	inSettings->dShaders = 1;
 }
 
 

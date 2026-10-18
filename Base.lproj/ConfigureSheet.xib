@@ -17,7 +17,6 @@
                 <outlet property="ibMainScreenOnlyCbx" destination="18" id="36"/>
                 <outlet property="ibResolution" destination="24" id="33"/>
                 <outlet property="ibResolutionTxt" destination="25" id="43"/>
-                <outlet property="ibShaderCbx" destination="17" id="37"/>
                 <outlet property="ibSpeed" destination="21" id="38"/>
                 <outlet property="ibSpeedTxt" destination="22" id="44"/>
                 <outlet property="ibStarSize" destination="30" id="40"/>
@@ -130,19 +129,8 @@
                             <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
                         </textFieldCell>
                     </textField>
-                    <button fixedFrame="YES" tag="7" imageHugsTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="17">
-                        <rect key="frame" x="94" y="124" width="293" height="18"/>
-                        <autoresizingMask key="autoresizingMask"/>
-                        <buttonCell key="cell" type="check" title="Enable pixel &amp; vertex shaders (if available)" bezelStyle="regularSquare" imagePosition="leading" alignment="left" tag="7" inset="2" id="71">
-                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
-                            <font key="font" metaFont="system"/>
-                        </buttonCell>
-                        <connections>
-                            <action selector="setValueForSender:" target="-2" id="56"/>
-                        </connections>
-                    </button>
                     <button fixedFrame="YES" tag="8" imageHugsTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="18">
-                        <rect key="frame" x="94" y="58" width="129" height="18"/>
+                        <rect key="frame" x="94" y="80" width="129" height="18"/>
                         <autoresizingMask key="autoresizingMask"/>
                         <buttonCell key="cell" type="check" title="Main screen only" bezelStyle="regularSquare" imagePosition="leading" alignment="left" tag="8" inset="2" id="72">
                             <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
@@ -292,7 +280,7 @@ DQ
                         </connections>
                     </slider>
                     <button fixedFrame="YES" tag="9" imageHugsTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="87">
-                        <rect key="frame" x="94" y="102" width="140" height="18"/>
+                        <rect key="frame" x="94" y="124" width="140" height="18"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                         <buttonCell key="cell" type="check" title="Enable the nebula" bezelStyle="regularSquare" imagePosition="leading" alignment="left" state="on" inset="2" id="88">
                             <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
@@ -303,7 +291,7 @@ DQ
                         </connections>
                     </button>
                     <button fixedFrame="YES" tag="10" imageHugsTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="89">
-                        <rect key="frame" x="94" y="80" width="140" height="18"/>
+                        <rect key="frame" x="94" y="102" width="140" height="18"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                         <buttonCell key="cell" type="check" title="Enable wormholes" bezelStyle="regularSquare" imagePosition="leading" alignment="left" state="on" inset="2" id="90">
                             <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>

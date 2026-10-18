@@ -24,7 +24,6 @@ struct HyperspaceSaverSettings
 	int dFov;
 	bool dUseTunnels;
 	bool dUseGoo;
-	bool dShaders;
 
 	// Additional globals:
 	HSRenderer *renderer;
