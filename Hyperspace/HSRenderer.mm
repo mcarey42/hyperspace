@@ -99,14 +99,24 @@ class HSRendererImpl
 public:
 	id<MTLDevice> device = nil;
 	id<MTL4CommandQueue> queue = nil;
-	id<MTL4CommandAllocator> allocator = nil;
+	// Triple-buffered, matching Apple's own Metal 4 sample exactly: an MTL4CommandAllocator
+	// can't be reset until the GPU has actually finished the passes it recorded (commit()
+	// returning only means the CPU handed the buffer to the queue, not that the GPU is done
+	// with it), so each allocator is only reused once the frame 3 iterations behind it has
+	// been confirmed complete via a real GPU-signaled event, not a semaphore bumped at
+	// commit time — the same margin the sample gives itself rather than the bare minimum.
+	static const int kMaxFramesInFlight = 3;
+	id<MTL4CommandAllocator> allocators[kMaxFramesInFlight] = {nil, nil, nil};
 	id<MTLResidencySet> residencySet = nil;
-	// Single-buffered: an MTL4CommandAllocator can't be reset until the GPU has actually
-	// finished the passes it recorded (commit() returning only means the CPU handed the
-	// buffer to the queue, not that the GPU is done with it) — so this waits on a real
-	// GPU-signaled event rather than a semaphore bumped at commit time.
 	id<MTLSharedEvent> frameEvent = nil;
 	uint64_t frameNumber = 0;
+	// Guards against beginFrame()/endFrame() being entered twice without an intervening
+	// matched pair completing. waitUntilSignaledValue:timeoutMS: below can pump the run
+	// loop while it blocks, and on the main thread that can let AppKit redeliver a UI
+	// event (e.g. a click) that re-enters animateOneFrame() -> beginFrame() before the
+	// first call returns, which would otherwise reset impl->allocator out from under an
+	// encoder that's still open.
+	bool frameInProgress = false;
 
 	__weak MTKView *view = nil;
 
@@ -151,6 +161,12 @@ public:
 	id<MTLTexture> causticTexture = nil;
 	int causticSize = 0;
 
+	// The view's residency set at attachToView time (when the view is still 0x0, before
+	// SwiftUI/AppKit ever gives it a real size) may not be the object MTKView ends up
+	// actually using for its drawables once it's properly sized. Track what's currently
+	// registered with the queue so beginFrame can detect and fix a swap.
+	__weak id<MTLResidencySet> registeredViewResidencySet = nil;
+
 	// Immediate-mode state.
 	HSPipeline currentPipeline = HS_PIPELINE_SPRITE;
 	HSCullMode currentCullMode = HS_CULL_NONE;
@@ -187,9 +203,13 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	if (!queue)
 		return false;
 
-	id<MTL4CommandAllocator> allocator = [device newCommandAllocator];
-	if (!allocator)
-		return false;
+	id<MTL4CommandAllocator> allocators[HSRendererImpl::kMaxFramesInFlight];
+	for (int i = 0; i < HSRendererImpl::kMaxFramesInFlight; ++i)
+	{
+		allocators[i] = [device newCommandAllocator];
+		if (!allocators[i])
+			return false;
+	}
 
 	MTLResidencySetDescriptor *residencyDesc = [MTLResidencySetDescriptor new];
 	residencyDesc.label = @"HSRenderer residency set";
@@ -204,7 +224,8 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 
 	impl->device = device;
 	impl->queue = queue;
-	impl->allocator = allocator;
+	for (int i = 0; i < HSRendererImpl::kMaxFramesInFlight; ++i)
+		impl->allocators[i] = allocators[i];
 	impl->residencySet = residencySet;
 	impl->frameEvent = [device newSharedEvent];
 	impl->frameEvent.signaledValue = 0;
@@ -215,8 +236,9 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	mtkView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
 	mtkView.paused = YES;
 	mtkView.enableSetNeedsDisplay = NO;
-	// The view's own drawable textures need to be resident too.
-	[queue addResidencySet:mtkView.residencySet];
+	// The view's own drawable textures need to be resident too, but mtkView.residencySet
+	// isn't meaningful yet here (the view is still 0x0 at this point, before AppKit/SwiftUI
+	// ever gives it a real size) — beginFrame() registers the real one once it exists.
 
 	id<MTLLibrary> library = [device newDefaultLibraryWithBundle:[NSBundle bundleForClass:[HSRendererBundleAnchor class]] error:&error];
 	if (!library)
@@ -313,15 +335,33 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	return true;
 }
 
-void HSRenderer::beginFrame()
+bool HSRenderer::beginFrame()
 {
-	// Wait for the GPU to actually finish the previous frame (not just for commit() to
-	// return) before reclaiming the single allocator's memory for this frame's commands.
+	if (impl->frameInProgress)
+		return false;	// re-entrant call (see frameInProgress's comment); drop this one
+	impl->frameInProgress = true;
+
+	// Wait for the GPU to actually finish the frame kMaxFramesInFlight iterations back (not
+	// just for its commit() to return) before reclaiming the allocator it used.
 	impl->frameNumber++;
-	[impl->frameEvent waitUntilSignaledValue:impl->frameNumber - 1 timeoutMS:1000];
-	[impl->allocator reset];
+	id<MTL4CommandAllocator> allocator = impl->allocators[impl->frameNumber % HSRendererImpl::kMaxFramesInFlight];
+	if (impl->frameNumber > HSRendererImpl::kMaxFramesInFlight)
+		[impl->frameEvent waitUntilSignaledValue:impl->frameNumber - HSRendererImpl::kMaxFramesInFlight timeoutMS:1000];
+	[allocator reset];
 
 	MTKView *view = impl->view;
+	// attachToView ran while the view was still 0x0 (before AppKit/SwiftUI ever gave it a
+	// real size), so the residency set it registered for the view's drawables then may not
+	// be the one MTKView actually vends once the view is properly sized. Catch that swap
+	// here — cheap to check, and this is the only place that's guaranteed to run once the
+	// view has real geometry, before any GPU work that would write to its drawable texture.
+	if (view.residencySet != impl->registeredViewResidencySet)
+	{
+		if (view.residencySet)
+			[impl->queue addResidencySet:view.residencySet];
+		impl->registeredViewResidencySet = view.residencySet;
+	}
+
 	MTL4RenderPassDescriptor *passDescriptor = view.currentMTL4RenderPassDescriptor;
 	impl->drawable = view.currentDrawable;
 	if (!passDescriptor || !impl->drawable)
@@ -329,7 +369,8 @@ void HSRenderer::beginFrame()
 		impl->frameEvent.signaledValue = impl->frameNumber;	// no GPU work this frame; keep the bookkeeping consistent
 		impl->commandBuffer = nil;
 		impl->encoder = nil;
-		return;
+		impl->frameInProgress = false;
+		return false;
 	}
 
 	passDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
@@ -337,7 +378,7 @@ void HSRenderer::beginFrame()
 	passDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
 
 	id<MTL4CommandBuffer> commandBuffer = [impl->device newCommandBuffer];
-	[commandBuffer beginCommandBufferWithAllocator:impl->allocator];
+	[commandBuffer beginCommandBufferWithAllocator:allocator];
 
 	impl->commandBuffer = commandBuffer;
 	impl->encoder = [commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
@@ -347,6 +388,7 @@ void HSRenderer::beginFrame()
 	[impl->encoder setCullMode:MTLCullModeNone];
 	impl->currentCullMode = HS_CULL_NONE;
 	impl->vertexBufferOffset = 0;
+	return true;
 }
 
 void HSRenderer::endFrame()
@@ -373,6 +415,7 @@ void HSRenderer::endFrame()
 	impl->encoder = nil;
 	impl->commandBuffer = nil;
 	impl->drawable = nil;
+	impl->frameInProgress = false;
 }
 
 // --- Everything below is wired up in later phases; stub for now. ---
@@ -651,8 +694,13 @@ HSTextureRef HSRenderer::createTexture2D(int width, int height, const uint8_t *r
 
 	if (mipmapped)
 	{
+		// A throwaway allocator, not one of the per-frame allocators: this can be called
+		// at any time (not just between beginFrame/endFrame), so it must not risk a
+		// beginFrame() reset reclaiming this buffer's memory while it's still in flight.
+		id<MTL4CommandAllocator> mipAllocator = [impl->device newCommandAllocator];
+		impl->setupAllocators.push_back(mipAllocator);
 		id<MTL4CommandBuffer> cmdBuffer = [impl->device newCommandBuffer];
-		[cmdBuffer beginCommandBufferWithAllocator:impl->allocator];
+		[cmdBuffer beginCommandBufferWithAllocator:mipAllocator];
 		id<MTL4ComputeCommandEncoder> blit = [cmdBuffer computeCommandEncoder];
 		[blit generateMipmapsForTexture:texture];
 		[blit endEncoding];

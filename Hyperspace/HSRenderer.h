@@ -57,8 +57,11 @@ public:
 	// any Apple silicon Mac, but HyperspaceView falls back to an error message if so).
 	bool attachToView(MTKView *view);
 
-	// Per-frame bracketing. beginFrame clears to black; endFrame presents.
-	void beginFrame();
+	// Per-frame bracketing. beginFrame clears to black; endFrame presents. beginFrame
+	// returns false if it dropped this frame (no drawable yet, or a re-entrant call came
+	// in while a frame was already in progress) — the caller must not call draw()/endFrame()
+	// in that case, since there is no matching encoder to draw into or close out.
+	bool beginFrame();
 	void endFrame();
 
 	// Fog applies uniformly to every pipeline's fragment shader.

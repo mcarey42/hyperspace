@@ -187,7 +187,8 @@
 
 - (void)drawInMTKView:(MTKView *)view
 {
-	lRenderer->beginFrame();
+	if (!lRenderer->beginFrame())
+		return;
 	draw(&lSettings);
 	lRenderer->endFrame();
 }
