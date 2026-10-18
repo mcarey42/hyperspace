@@ -30,7 +30,7 @@
 #include <Implicit/impCrawlPoint.h>
 #include "HSRenderer.h"
 
-typedef struct HyperspaceSaverSettings;
+struct HyperspaceSaverSettings;
 
 
 class goo{

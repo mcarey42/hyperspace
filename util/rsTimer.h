@@ -24,13 +24,9 @@
 
 
 
-#ifdef WIN32
-#include <windows.h>
-#else
 #include <stdlib.h>
 #include <sys/time.h>
 #include <iostream>
-#endif
 
 
 class rsTimer{
@@ -42,63 +38,24 @@ public:
 	// Wait() would take a hair too long, if we didn't keep track of the
 	// extra time it was spending.  That's what wait_overhead is for.
 	float wait_function_overhead;
-#ifdef WIN32
-	BOOL highResCounterSupported;
-	float freq;  // high frequency system counts per second
-	LONGLONG curr, prev;
-	// for low res timer if high res is unavailable
-	DWORD lowResCurr, lowResPrev;
-#else
 	struct timeval prev_tv;
-#endif
 
 	rsTimer(){
 		elapsed_time = 0.0f;
 		waited_time = 0.0f;
 		wait_function_overhead = 0.0f;
-#ifdef WIN32
-		// init high- and low-res timers
-		LARGE_INTEGER n[1];
-		highResCounterSupported = QueryPerformanceFrequency(n);
-		freq = 1.0f / float(n[0].QuadPart);
-		timeBeginPeriod(1);  // make Sleep() and timeGetTime() more accurate
-		// get first tick for high- and low-res timers
-		QueryPerformanceCounter(n);
-		curr = n[0].QuadPart;
-		lowResCurr = timeGetTime();
-#else
 		gettimeofday(&prev_tv, NULL);
-#endif
 	}
 
 	~rsTimer(){}
 
 	// return time elapsed since last call to tick()
 	inline float tick(){
-#ifdef WIN32
-		if(highResCounterSupported){
-			prev = curr;
-			LARGE_INTEGER n[1];
-			QueryPerformanceCounter(n);
-			curr = n[0].QuadPart;
-			if(curr >= prev) 
-				elapsed_time = float(curr - prev) * freq;
-			// else use time from last frame
-		}
-		else{
-			lowResPrev = lowResCurr;
-			lowResCurr = timeGetTime();
-			if(lowResCurr >= lowResPrev) 
-				elapsed_time = float(lowResCurr - lowResPrev) * 0.001f;
-			// else use time from last frame
-		}
-#else
 		struct timeval curr_tv;
 		gettimeofday(&curr_tv, NULL);
 		float elapsed_time = float(curr_tv.tv_sec - prev_tv.tv_sec)
 			+ ((curr_tv.tv_usec - prev_tv.tv_usec) * 0.000001f);
 		prev_tv = curr_tv;
-#endif
 		return elapsed_time;
 	}
 
@@ -111,11 +68,7 @@ public:
 		waited_time = tick();
 		float actual_waited_time(waited_time + wait_function_overhead);
 		if(actual_waited_time < target_time){
-#ifdef WIN32
-			Sleep(DWORD(1000.0f * (target_time - actual_waited_time)));
-#else
 			usleep(useconds_t(1000000.0f * (target_time - actual_waited_time)));
-#endif
 			waited_time += tick();
 		}
 		wait_function_overhead += 0.05f * (waited_time - target_time);

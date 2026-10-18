@@ -24,7 +24,7 @@
 
 static const size_t kVertexBufferCapacity = 4 * 1024 * 1024;	// 4MB, reset every frame
 static const size_t kIndexBufferCapacity = 1 * 1024 * 1024;	// 1MB (262144 uint32 indices), reset every frame
-static const size_t kVertexStride = sizeof(float) * 14;	// clipPosition(4) + eyePosition(3) + attrib3(3) + color(4)
+// Every vertex is 14 floats: clipPosition(4) + eyePosition(3) + attrib3(3) + color(4).
 
 static const int kMaxMatrixStackDepth = 32;
 

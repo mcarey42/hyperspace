@@ -81,9 +81,6 @@ void impCubeVolume::init(unsigned int width, unsigned int height, unsigned int l
 				cubes[index].x = lbf[0] + (cubewidth * float(i));
 				cubes[index].y = lbf[1] + (cubewidth * float(j));
 				cubes[index].z = lbf[2] + (cubewidth * float(k));
-#ifdef __SSE__
-				cubes[index].w = 1.0f;
-#endif
 				cubes[index].cube_frame = 0;
 				cubes[index].corner_frame = 0;
 				cubes[index].x_vertex_frame = 0;

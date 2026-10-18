@@ -1,8 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Minimum Metal requirements\rfor this Screen Effect\rnot available\ron your Mac." : {
+      "comment" : "No comment",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "Die erforderlichen Metal-Voraussetzungen\r für diesen Effekt\r werden von Ihrem Mac\r nicht unterstützt."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "Minimum Metal requis\rpour cet économiseur\rnon disponible\rsur votre Mac."
+          }
+        }
+      }
+    },
     "Minimum OpenGL requirements\rfor this Screen Effect\rnot available\ron your graphic card." : {
       "comment" : "No comment",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -25,5 +43,5 @@
       }
     }
   },
-  "version" : "1.0"
+  "version" : "1.3"
 }

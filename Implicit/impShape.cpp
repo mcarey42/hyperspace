@@ -48,11 +48,6 @@ void impShape::setPosition(float x, float y, float z){
 	invtrmat[3] = -x;
 	invtrmat[7] = -y;
 	invtrmat[11] = -z;
-#ifdef __SSE__
-	((float*)(&(invtrmatrow[0])))[3] = -x;
-	((float*)(&(invtrmatrow[1])))[3] = -y;
-	((float*)(&(invtrmatrow[2])))[3] = -z;
-#endif
 }
 
 
@@ -79,12 +74,6 @@ void impShape::setMatrix(float* m){
 	invtrmat[13] = invmat[7];
 	invtrmat[14] = invmat[11];
 	invtrmat[15] = invmat[15];
-#ifdef __SSE__
-	invtrmatrow[0] = _mm_loadu_ps(invtrmat);
-	invtrmatrow[1] = _mm_loadu_ps(&(invtrmat[4]));
-	invtrmatrow[2] = _mm_loadu_ps(&(invtrmat[8]));
-	invtrmatrow[3] = _mm_loadu_ps(&(invtrmat[12]));
-#endif
 }
 
 

@@ -30,9 +30,6 @@
 #include <rsMath/rsMatrix.h>
 #include <rsMath/rsQuat.h>
 #include <rsMath/rsTrigonometry.h>
-#ifdef __SSE__
-#include <xmmintrin.h>
-#endif
 
 
 #define RS_EPSILON 0.000001f
@@ -57,22 +54,12 @@ inline float rsRandf(float x){
 
 
 inline float rsSqrtf(const float& x){
-#ifdef __SSE__
-	return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(x)));
-#else
-	//return powf(x, 0.5f);
 	return sqrtf(x);
-#endif
 }
 
 
 inline float rsInvSqrtf(const float& x){
-#ifdef __SSE__
-	return _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(x)));
-#else
-	//return 1.0f / powf(x, 0.5f);
 	return 1.0f / sqrtf(x);
-#endif
 }
 /*typedef union {
 	float f;

@@ -158,7 +158,7 @@
 
             tAttributes = [NSDictionary dictionaryWithObjectsAndKeys:[NSFont systemFontOfSize:[NSFont systemFontSize]],NSFontAttributeName,[NSColor whiteColor],NSForegroundColorAttributeName,tParagraphStyle,NSParagraphStyleAttributeName,nil];
 
-            tString=NSLocalizedStringFromTableInBundle(@"Minimum OpenGL requirements\rfor this Screen Effect\rnot available\ron your graphic card.",@"Localizable",[NSBundle bundleForClass:[self class]],@"No comment");
+            tString=NSLocalizedStringFromTableInBundle(@"Minimum Metal requirements\rfor this Screen Effect\rnot available\ron your Mac.",@"Localizable",[NSBundle bundleForClass:[self class]],@"No comment");
 
             tStringFrame.origin=NSZeroPoint;
             tStringFrame.size=[tString sizeWithAttributes:tAttributes];
@@ -284,16 +284,16 @@
 			[ibFovTxt setIntValue:[sender intValue]];
 			break;
 		case 7:	// shaders
-			lSettings.dShaders = ([sender state] == NSOnState ? true : false);
+			lSettings.dShaders = ([sender state] == NSControlStateValueOn ? true : false);
 			break;
 		case 8:	// main screen
-			lMainScreenOnly = ([sender state] == NSOnState ? true : false);
+			lMainScreenOnly = ([sender state] == NSControlStateValueOn ? true : false);
 			break;
 		case 9:	// goo
-			lSettings.dUseGoo = ([sender state] == NSOnState ? true : false);
+			lSettings.dUseGoo = ([sender state] == NSControlStateValueOn ? true : false);
 			break;
 		case 10:	// tunnels
-			lSettings.dUseTunnels = ([sender state] == NSOnState ? true : false);
+			lSettings.dUseTunnels = ([sender state] == NSControlStateValueOn ? true : false);
 			break;
 	}
 }
@@ -334,10 +334,10 @@
 	[ibDepthTxt setIntValue:lSettings.dDepth];
 	[ibFov setIntValue:lSettings.dFov];
 	[ibFovTxt setIntValue:lSettings.dFov];
-	[ibShaderCbx setState:(lSettings.dShaders ? NSOnState : NSOffState)];
-	[ibGooCbx setState:(lSettings.dUseGoo ? NSOnState : NSOffState)];
-	[ibTunnelCbx setState:(lSettings.dUseTunnels ? NSOnState : NSOffState)];
-	[ibMainScreenOnlyCbx setState:(lMainScreenOnly ? NSOnState : NSOffState)];
+	[ibShaderCbx setState:(lSettings.dShaders ? NSControlStateValueOn : NSControlStateValueOff)];
+	[ibGooCbx setState:(lSettings.dUseGoo ? NSControlStateValueOn : NSControlStateValueOff)];
+	[ibTunnelCbx setState:(lSettings.dUseTunnels ? NSControlStateValueOn : NSControlStateValueOff)];
+	[ibMainScreenOnlyCbx setState:(lMainScreenOnly ? NSControlStateValueOn : NSControlStateValueOff)];
 }
 
 @end

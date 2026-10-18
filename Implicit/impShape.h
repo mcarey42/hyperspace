@@ -27,17 +27,8 @@
 // derived.  An element would be a sphere or torus or anything
 // that defines an implicit surface.
 
-// NZ: Turn off building SSE on Intel 32 for backward compatibility reasons
-#ifdef __i386__
-#undef __SSE__
-#endif
-
 #include <Implicit/impCrawlPoint.h>
 #include <math.h>
-#ifdef __SSE__
-#include <malloc/malloc.h>
-#include <xmmintrin.h>
-#endif
 
 
 // Minimum divisor to be used when computing inverse square falloffs in various impShapes.
@@ -46,9 +37,6 @@
 
 class impShape{
 public:
-#ifdef __SSE__
-	__m128 invtrmatrow[4];  // inverted and then transposed
-#endif
 	float mat[16];
 	float invmat[16];  // inverted
 	float invtrmat[16];  // inverted and then transposed
@@ -80,27 +68,6 @@ public:
 	virtual void center(float* position);
 	// adds surface crawler start position(s) to given crawlPointVector
 	virtual void addCrawlPoint(impCrawlPointVector &cpv);
-
-// When using SSE, __m128 will not be byte aligned when used in a class.  Overriding
-// new and delete ensures this whole class gets aligned to a 16-byte boundary.
-#ifdef __SSE__
-	void* operator new(size_t size){
-#ifdef WIN32
-		return _aligned_malloc(size, 16);
-#else
-		//return memalign(16, size);
-		return malloc_zone_memalign(malloc_default_zone(), 16, size);
-#endif
-	}
-	void operator delete (void* mem){
-#ifdef WIN32
-		_aligned_free(mem);
-#else
-		//free(mem);
-		malloc_zone_free(malloc_default_zone(), mem);
-#endif
-	}
-#endif
 };
 
 

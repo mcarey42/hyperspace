@@ -41,9 +41,6 @@ struct cubedata{
 	float x;
 	float y;
 	float z;
-#ifdef __SSE__
-	float w;  // must have a 1.0f here for SSE dot product computations
-#endif
 	// field value at this corner
 	float value;
 	// edge vertex indices for surfaces
