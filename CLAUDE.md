@@ -54,6 +54,28 @@ preferred not to block on that). It is a standing manual step.
   blocking, which on the main thread can let AppKit redeliver a UI event that re-enters the draw
   call before the outer one returns.
 
+## legacyScreenSaver hosting gotchas
+
+- **Blank screen at 60fps = `CAMetalLayer.contentsScale == 0`.** legacyScreenSaver often adds the
+  view to its host window before that window has a screen (frame 0x0, `screen == nil`). MTKView
+  then sets its layer's `contentsScale` to 0, and the host only sends resize/screen-change
+  notifications afterwards, never a backing-properties change, so it's never corrected. Every
+  drawable presents with no errors, and nothing composites. `-[HyperspaceView syncLayerScale]`
+  re-syncs it every frame. HyperspaceHost never reproduces this, so test in System Settings.
+- **`drawableSizeWillChange:` may never fire**: MTKView computes its first drawable size in
+  `initWithFrame:`, before the delegate is set, and the host usually never resizes the view.
+  `syncViewportWithDrawable` calls `reshape()` from the real drawable size every frame.
+- The System Settings sheet preview and the desktop background are the same full-display
+  (`isPreview=0`, 3840x2160) instance scaled down. The `isPreview=1`, 0x0 instances in the other
+  process never get `startAnimation`. The module-list tiles are the static `thumbnail.png`.
+- **Diagnostics**: `os_log` subsystem `com.reallyslick.Hyperspace` (see `Hyperspace/HSLog.h`).
+  Lifecycle lines are at default level; per-instance stats and layer-tree state every 2s are at
+  debug level:
+  `log stream --level debug --predicate 'subsystem == "com.reallyslick.Hyperspace"'`.
+  Frame, `initSaver` and animating intervals are signposts, so they show up in Instruments'
+  Points of Interest track. GPU-side errors are logged from `MTL4CommitOptions` feedback handlers.
+- To make the host reload a reinstalled bundle: `killall legacyScreenSaver`.
+
 ## Workflow
 
 - One branch (`modernize-metal`), one commit per phase/sub-phase milestone, each verified by

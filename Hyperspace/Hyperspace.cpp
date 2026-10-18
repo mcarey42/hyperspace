@@ -247,6 +247,12 @@ void reshape(int width, int height, HyperspaceSaverSettings *inSettings){
 
 
 void initSaver(HyperspaceSaverSettings *inSettings){
+	// Symmetric guard to cleanUp()'s: a second startAnimation with no intervening
+	// stopAnimation would otherwise overwrite every pointer below without freeing what
+	// was there, leaking rather than crashing, but still worth not doing.
+	if(inSettings->readyToDraw)
+		return;
+
 	srand((unsigned)time(NULL));
 
 	inSettings->camPos[0] = 0.0f;
@@ -333,11 +339,25 @@ void initSaver(HyperspaceSaverSettings *inSettings){
 
 	inSettings->renderer->setFog(inSettings->depth * 0.7f, inSettings->depth, true);
 
+	// One consolidated wait for every mipmap/caustic-texture setup submission issued above to
+	// actually finish on the GPU (not just be committed) before the main render loop can start
+	// sampling any of them. See HSRenderer::waitForSetupCompletion's header comment.
+	inSettings->renderer->waitForSetupCompletion();
+
 	inSettings->readyToDraw = 1;
 }
 
 
 void cleanUp(HyperspaceSaverSettings *inSettings){
+	// Guards against a second stopAnimation (with no intervening startAnimation re-running
+	// initSaver) re-deleting everything below a second time. The original had the same
+	// unconditional delete-everything body with no such guard; readyToDraw is only ever set
+	// back to 1 by initSaver, so checking it here is a cheap, correct fix rather than a
+	// behavior change.
+	if(!inSettings->readyToDraw)
+		return;
+	inSettings->readyToDraw = 0;
+
 	for(int i=0; i<inSettings->dStars; i++)
 		delete inSettings->stars[i];
 	delete [] inSettings->stars;

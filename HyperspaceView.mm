@@ -26,6 +26,26 @@
 #import "HyperspaceView.h"
 #import "Hyperspace.h"
 #import "flare.h"
+#import "Hyperspace/HSLog.h"
+#import <atomic>
+#import <unistd.h>
+
+// Diagnostic state (see HSLog.h). Kept out of the public header.
+static std::atomic<uint32_t> sNextInstanceID{1};
+
+@interface HyperspaceView ()
+{
+	uint32_t lInstanceID;
+	os_signpost_id_t lSignpostID;
+	CFAbsoluteTime lLastStatsTime;
+	HSFrameStats lLastStats;
+	uint64_t lAnimateCalls, lLastAnimateCalls;
+	uint64_t lDrawCalls, lLastDrawCalls;
+	BOOL lLoggedFirstPresent;
+	BOOL lLoggedFirstDrawRect;
+}
+- (void)logStatsIfDue;
+@end
 
 @interface HyperspaceView (Private)
 - (void)readDefaults:(ScreenSaverDefaults *)inDefaults;
@@ -42,6 +62,21 @@
     self = [super initWithFrame:frame isPreview:isPreview];
     if (self)
 	{
+		lInstanceID = sNextInstanceID++;
+		lSignpostID = os_signpost_id_generate(HSSignpostLog());
+		os_log(HSLog(), "#%u init pid=%d frame=%{public}@ isPreview=%d", lInstanceID, getpid(),
+			   NSStringFromRect(frame), isPreview);
+		os_signpost_event_emit(HSSignpostLog(), lSignpostID, "init", "#%u %{public}@", lInstanceID, NSStringFromRect(frame));
+
+		// MTKView (lView, added as a subview below) is inherently layer-backed (it's built on
+		// CAMetalLayer), but this view itself was never explicitly made layer-backed. Mixing a
+		// non-layer-backed host view with a layer-backed Metal subview is a known source of
+		// "renders fine, never actually composites" bugs specifically when the content has to
+		// cross a process boundary — exactly the case here, since the real screen saver host
+		// and the System Settings preview both load this view inside a sandboxed app extension
+		// and composite its content remotely rather than drawing it directly in-process.
+		self.wantsLayer = YES;
+
 		lSettings.doingPreview = isPreview;
 		if (isPreview)
 			lMainScreen = YES;
@@ -51,14 +86,26 @@
 		lMainScreenOnly = [defaults boolForKey:@"MainScreenOnly"];
 		if (lMainScreen || !lMainScreenOnly)
 		{
-			MTKView *candidateView = [[MTKView alloc] initWithFrame:NSZeroRect];
+			// Use the frame this view was actually given, not NSZeroRect: some hosting
+			// contexts (e.g. the System Settings mini-preview, which goes through
+			// ViewBridge's remote-view geometry negotiation) may never deliver a later
+			// setFrameSize: call cleanly, so starting at zero size and waiting for a resize
+			// to arrive risks the Metal view staying 0x0 — and never getting a drawable —
+			// for the life of that instance.
+			MTKView *candidateView = [[MTKView alloc] initWithFrame:NSMakeRect(0, 0, frame.size.width, frame.size.height)];
+			candidateView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 			HSRenderer *renderer = new HSRenderer;
 
-			if (renderer->attachToView(candidateView))
+			renderer->setLogTag(lInstanceID);
+			BOOL attached = renderer->attachToView(candidateView);
+			os_log(HSLog(), "#%u attachToView=%d mtkView drawableSize=%{public}@", lInstanceID, attached,
+				   NSStringFromSize(NSSizeFromCGSize(candidateView.drawableSize)));
+			if (attached)
 			{
 				lView = candidateView;
 				lRenderer = renderer;
 				lView.delegate = self;
+				self.autoresizesSubviews = YES;
 				[self addSubview:lView];
 
 				lSettings.frameTime = 0;
@@ -78,13 +125,25 @@
 				delete renderer;
 			}
 		}
+		else
+			os_log(HSLog(), "#%u no renderer: lMainScreen=%d lMainScreenOnly=%d", lInstanceID, lMainScreen, lMainScreenOnly);
     }
     return self;
 }
 
 
+- (void)dealloc
+{
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+	os_log(HSLog(), "#%u dealloc (animateCalls=%llu presented=%llu)", lInstanceID, lAnimateCalls,
+		   lRenderer ? lRenderer->frameStats().presented : 0);
+}
+
+
 - (void)setFrameSize:(NSSize)size
 {
+	os_log(HSLog(), "#%u setFrameSize %{public}@ (was %{public}@)", lInstanceID, NSStringFromSize(size),
+		   NSStringFromSize(self.frame.size));
 	[super setFrameSize:size];
 	if (lView)
 		[lView setFrameSize:size];
@@ -93,7 +152,49 @@
 
 - (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size
 {
-	reshape(int(size.width), int(size.height), &lSettings);
+	os_log(HSLog(), "#%u drawableSizeWillChange %{public}@", lInstanceID, NSStringFromSize(NSSizeFromCGSize(size)));
+	if (size.width >= 1 && size.height >= 1)
+		reshape(int(size.width), int(size.height), &lSettings);
+}
+
+
+// reshape() is the only thing that ever sets the projection matrix and viewport, and
+// drawableSizeWillChange: can't be relied on to deliver it: MTKView computes its initial
+// drawableSize in initWithFrame:, before lView.delegate is assigned, and never re-reports it
+// unless the size later changes (e.g. a backing-scale change on window attach). When the host
+// creates this view at its final size and never resizes it — the normal case in
+// legacyScreenSaver — the delegate never fires, the projection stays all zeros, and every
+// frame renders black. So check the real drawable size on every frame instead.
+- (void)syncViewportWithDrawable
+{
+	CGSize size = lView.drawableSize;
+	if (size.width < 1 || size.height < 1)
+		return;
+	if (int(size.width) != lSettings.xsize || int(size.height) != lSettings.ysize)
+	{
+		os_log(HSLog(), "#%u syncViewport reshape %dx%d -> %dx%d", lInstanceID, lSettings.xsize, lSettings.ysize,
+			   int(size.width), int(size.height));
+		reshape(int(size.width), int(size.height), &lSettings);
+	}
+}
+
+
+// legacyScreenSaver often adds this view to its host window before that window has a screen
+// (window frame 0x0, screen nil). MTKView then sets its CAMetalLayer's contentsScale to 0, and
+// the host later gives the window a screen and size with only resize/screen-change notifications,
+// never a backing-properties change, so MTKView never corrects it. A layer with contentsScale 0
+// composites nothing, even though every drawable presents successfully: 60fps, no errors, black
+// screen. Keep the layer's scale in step with the window's backing scale ourselves.
+- (void)syncLayerScale
+{
+	CALayer *layer = lView.layer;
+	CGFloat scale = self.window.backingScaleFactor;
+	if (scale < 1.0)
+		scale = self.window.screen.backingScaleFactor;
+	if (scale < 1.0 || !layer || layer.contentsScale == scale)
+		return;
+	os_log(HSLog(), "#%u syncLayerScale contentsScale %.2f -> %.2f", lInstanceID, layer.contentsScale, scale);
+	layer.contentsScale = scale;
 }
 
 
@@ -102,18 +203,51 @@
 	[super viewDidMoveToWindow];
 	NSScreen *screen = self.window.screen;
 	self.animationTimeInterval = screen ? screen.minimumRefreshInterval : (1.0 / 60.0);
+	os_log(HSLog(), "#%u viewDidMoveToWindow window=%p windowFrame=%{public}@ screen=%{public}@ scale=%.1f "
+		   "frame=%{public}@ mtkFrame=%{public}@ drawableSize=%{public}@ interval=%.4f",
+		   lInstanceID, self.window, NSStringFromRect(self.window.frame), screen.localizedName,
+		   self.window.backingScaleFactor, NSStringFromRect(self.frame), NSStringFromRect(lView.frame),
+		   NSStringFromSize(NSSizeFromCGSize(lView.drawableSize)), self.animationTimeInterval);
+
+	NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+	for (NSNotificationName name in @[NSWindowDidResizeNotification, NSWindowDidChangeScreenNotification,
+									  NSWindowDidChangeBackingPropertiesNotification, NSWindowDidChangeOcclusionStateNotification])
+	{
+		[nc removeObserver:self name:name object:nil];
+		if (self.window)
+			[nc addObserver:self selector:@selector(logWindowNotification:) name:name object:self.window];
+	}
+}
+
+
+- (void)logWindowNotification:(NSNotification *)note
+{
+	NSWindow *w = note.object;
+	os_log(HSLog(), "#%u %{public}@ winFrame=%{public}@ screen=%{public}@ scale=%.1f occlusionVisible=%d "
+		   "frame=%{public}@ mtkLayerBounds=%{public}@ drawable=%{public}@",
+		   lInstanceID, note.name, NSStringFromRect(w.frame), w.screen.localizedName, w.backingScaleFactor,
+		   (w.occlusionState & NSWindowOcclusionStateVisible) != 0, NSStringFromRect(self.frame),
+		   NSStringFromRect(NSRectFromCGRect(lView.layer.bounds)), NSStringFromSize(NSSizeFromCGSize(lView.drawableSize)));
 }
 
 
 - (void)startAnimation
 {
     [super startAnimation];
+	os_log(HSLog(), "#%u startAnimation isAnimating=%d configuring=%d readyToDraw=%d window=%p",
+		   lInstanceID, self.isAnimating, lIsConfiguring, lSettings.readyToDraw, self.window);
+	os_signpost_interval_begin(HSSignpostLog(), lSignpostID, "animating", "#%u", lInstanceID);
 
 	if (lIsConfiguring == NO && lView)
     {
         if (lMainScreen || !lMainScreenOnly)
         {
+			CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+			os_signpost_interval_begin(HSSignpostLog(), lSignpostID, "initSaver", "#%u", lInstanceID);
             initSaver(&lSettings);
+			os_signpost_interval_end(HSSignpostLog(), lSignpostID, "initSaver", "#%u", lInstanceID);
+			os_log(HSLog(), "#%u initSaver took %.0f ms, readyToDraw=%d", lInstanceID,
+				   (CFAbsoluteTimeGetCurrent() - start) * 1000.0, lSettings.readyToDraw);
 			timer.reset();
         }
     }
@@ -123,6 +257,8 @@
 - (void)stopAnimation
 {
     [super stopAnimation];
+	os_log(HSLog(), "#%u stopAnimation configuring=%d readyToDraw=%d", lInstanceID, lIsConfiguring, lSettings.readyToDraw);
+	os_signpost_interval_end(HSSignpostLog(), lSignpostID, "animating", "#%u", lInstanceID);
 
 	if (lIsConfiguring == NO && lView)
     {
@@ -137,6 +273,11 @@
 
 - (void)drawRect:(NSRect)rect
 {
+    if (!lLoggedFirstDrawRect)
+	{
+		lLoggedFirstDrawRect = YES;
+		os_log(HSLog(), "#%u first drawRect %{public}@ (lView=%p)", lInstanceID, NSStringFromRect(rect), lView);
+	}
     [[NSColor blackColor] set];
     NSRectFill(rect);
 
@@ -170,6 +311,11 @@
 
 - (void)animateOneFrame
 {
+	lAnimateCalls++;
+	if (lAnimateCalls == 1)
+		os_log(HSLog(), "#%u first animateOneFrame", lInstanceID);
+	[self logStatsIfDue];
+
 	if (lIsConfiguring == NO && lView)
     {
         if (lMainScreen || !lMainScreenOnly)
@@ -184,10 +330,66 @@
 
 - (void)drawInMTKView:(MTKView *)view
 {
+	lDrawCalls++;
+	[self syncLayerScale];
+	[self syncViewportWithDrawable];
 	if (!lRenderer->beginFrame())
 		return;
+	os_signpost_interval_begin(HSSignpostLog(), lSignpostID, "frame", "#%u", lInstanceID);
 	draw(&lSettings);
 	lRenderer->endFrame();
+	os_signpost_interval_end(HSSignpostLog(), lSignpostID, "frame", "#%u", lInstanceID);
+	if (!lLoggedFirstPresent)
+	{
+		lLoggedFirstPresent = YES;
+		os_log(HSLog(), "#%u first frame presented (drawableSize=%{public}@, %llu animate calls in)", lInstanceID,
+			   NSStringFromSize(NSSizeFromCGSize(view.drawableSize)), lAnimateCalls);
+	}
+}
+
+
+// Every ~2s per instance (debug level; stream with --level debug): what the host is driving (animate calls), what reached the renderer
+// (draw calls), and where frames went (presented vs. each skip reason, GPU completions/errors),
+// plus the geometry/visibility state most likely to explain a blank screen.
+- (void)logStatsIfDue
+{
+	CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+	if (lLastStatsTime == 0)
+		lLastStatsTime = now;
+	if (now - lLastStatsTime < 2.0)
+		return;
+
+	HSFrameStats s = lRenderer ? lRenderer->frameStats() : HSFrameStats();
+	HSFrameStats &p = lLastStats;
+	NSWindow *w = self.window;
+	os_log_debug(HSLog(), "#%u stats %.1fs: animate=%llu draw=%llu presented=%llu skip[reent=%llu noPass=%llu noDrawable=%llu fence=%llu] "
+		   "gpuDone=%llu gpuErr=%llu | ready=%d cfg=%d size=%dx%d frame=%{public}@ drawable=%{public}@ "
+		   "window=%p visible=%d occluded=%d hidden=%d",
+		   lInstanceID, now - lLastStatsTime,
+		   lAnimateCalls - lLastAnimateCalls, lDrawCalls - lLastDrawCalls, s.presented - p.presented,
+		   s.skipReentrant - p.skipReentrant, s.skipNoPassDescriptor - p.skipNoPassDescriptor,
+		   s.skipNoDrawable - p.skipNoDrawable, s.skipFenceTimeout - p.skipFenceTimeout,
+		   s.gpuCompleted - p.gpuCompleted, s.gpuErrors - p.gpuErrors,
+		   lSettings.readyToDraw, lIsConfiguring, lSettings.xsize, lSettings.ysize,
+		   NSStringFromRect(self.frame), NSStringFromSize(NSSizeFromCGSize(lView.drawableSize)),
+		   w, w.isVisible, w ? !(w.occlusionState & NSWindowOcclusionStateVisible) : -1,
+		   self.isHiddenOrHasHiddenAncestor);
+
+	CALayer *ml = lView.layer;
+	CALayer *root = ml;
+	int depth = 0;
+	while (root.superlayer) { root = root.superlayer; depth++; }
+	os_log_debug(HSLog(), "#%u layers: winFrame=%{public}@ screen=%{public}@ content=%{public}@ selfLayer=%{public}@ "
+		   "mtkLayer=%{public}@ %{public}@ bounds=%{public}@ scale=%.1f hidden=%d opacity=%.2f depth=%d root=%{public}@ rootBounds=%{public}@",
+		   lInstanceID, NSStringFromRect(w.frame), w.screen.localizedName, NSStringFromRect(w.contentView.frame),
+		   NSStringFromRect(NSRectFromCGRect(self.layer.frame)), NSStringFromClass(ml.class),
+		   ml.superlayer ? @"attached" : @"DETACHED", NSStringFromRect(NSRectFromCGRect(ml.bounds)), ml.contentsScale,
+		   ml.isHidden, ml.opacity, depth, NSStringFromClass(root.class), NSStringFromRect(NSRectFromCGRect(root.bounds)));
+
+	lLastStats = s;
+	lLastAnimateCalls = lAnimateCalls;
+	lLastDrawCalls = lDrawCalls;
+	lLastStatsTime = now;
 }
 
 

@@ -6,6 +6,7 @@
 //
 
 #import "HSRenderer.h"
+#import "HSLog.h"
 #import <Metal/Metal.h>
 #import <MetalKit/MetalKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -13,6 +14,9 @@
 #import <cstring>
 #import <vector>
 #import <map>
+#import <utility>
+#import <atomic>
+#import <memory>
 
 // Pure anchor for +[NSBundle bundleForClass:], so the Metal library always loads from
 // this .saver bundle regardless of which process (legacyScreenSaver, HyperspaceHost, the
@@ -22,8 +26,16 @@
 @implementation HSRendererBundleAnchor
 @end
 
-static const size_t kVertexBufferCapacity = 4 * 1024 * 1024;	// 4MB, reset every frame
-static const size_t kIndexBufferCapacity = 1 * 1024 * 1024;	// 1MB (262144 uint32 indices), reset every frame
+// 16MB, reset every frame. Was 4MB, sized for the pre-batching code path where each strip's
+// vertices went straight to the GPU in native MTLPrimitiveTypeTriangleStrip form. Batching
+// submissions into single draw calls requires expanding each strip to an independent triangle
+// list (triangle k of an N-vertex strip becomes 3 vertices instead of sharing N total), which
+// multiplies a long strip's footprint by nearly 3x — e.g. the tunnel's 42-vertex rings become
+// 120 vertices each. At default settings (2000 stars, tunnels+goo on) that pushed total
+// per-frame usage over 4MB, silently dropping whatever didn't fit — observed as the tunnel
+// disappearing entirely, since it's encoded after stars/goo in the frame.
+static const size_t kVertexBufferCapacity = 16 * 1024 * 1024;
+static const size_t kIndexBufferCapacity = 2 * 1024 * 1024;	// goo/starburst indices; smaller margin is fine since these aren't strip-expanded
 // Every vertex is 14 floats: clipPosition(4) + eyePosition(3) + attrib3(3) + color(4).
 
 static const int kMaxMatrixStackDepth = 32;
@@ -95,9 +107,20 @@ static void hsMatRotation(double degrees, double x, double y, double z, double m
 	m[10] = t * z * z + c;
 }
 
+// Counters touched from Metal's commit-feedback threads, so they live in a shared_ptr the
+// feedback blocks retain rather than in HSRendererImpl (which may be deleted first).
+struct HSAtomicStats
+{
+	std::atomic<uint64_t> gpuCompleted{0};
+	std::atomic<uint64_t> gpuErrors{0};
+};
+
 class HSRendererImpl
 {
 public:
+	uint32_t logTag = 0;
+	HSFrameStats stats;
+	std::shared_ptr<HSAtomicStats> gpuStats = std::make_shared<HSAtomicStats>();
 	id<MTLDevice> device = nil;
 	id<MTL4CommandQueue> queue = nil;
 	// Triple-buffered, matching Apple's own Metal 4 sample exactly: an MTL4CommandAllocator
@@ -171,6 +194,11 @@ public:
 	std::vector<id<MTL4CommandAllocator>> setupAllocators;
 	id<MTLTexture> causticTexture = nil;
 	int causticSize = 0;
+	// Signaled (cheaply, GPU-side, no CPU wait) after every one-off setup submission;
+	// waitForSetupCompletion() schedules one GPU-side queue wait for the highest value
+	// signaled so far, once all setup work has been issued. See that method's header comment.
+	id<MTLSharedEvent> setupEvent = nil;
+	uint64_t setupEventValue = 0;
 
 	// The view's residency set at attachToView time (when the view is still 0x0, before
 	// SwiftUI/AppKit ever gives it a real size) may not be the object MTKView ends up
@@ -186,6 +214,38 @@ public:
 	float currentAttrib3[3] = {0.0f, 0.0f, 0.0f};
 	std::vector<float> vertexAccumulator;	// CPU staging for begin/vertex*/end
 
+	// Deferred batching: GL's immediate mode let the driver coalesce thousands of tiny
+	// glBegin/glEnd draws for you; Metal has no such thing, and one drawPrimitives call per
+	// quad (e.g. one per star) measured at ~4265 draws/frame, which is what was capping frame
+	// rate well below 60fps. Consecutive end()/drawIndexedMesh() submissions that share the
+	// same pipeline/cullMode/textures now accumulate into one contiguous buffer range and
+	// flush as a single draw call, only flushing early when that state actually changes.
+	struct BatchKey
+	{
+		HSPipeline pipeline = HS_PIPELINE_SPRITE;
+		HSCullMode cullMode = HS_CULL_NONE;
+		HSTextureRef textures[3] = {HS_INVALID_TEXTURE, HS_INVALID_TEXTURE, HS_INVALID_TEXTURE};
+		bool operator==(const BatchKey &o) const
+		{
+			return pipeline == o.pipeline && cullMode == o.cullMode
+				&& textures[0] == o.textures[0] && textures[1] == o.textures[1] && textures[2] == o.textures[2];
+		}
+	};
+	// Non-indexed (sprite/tunnel/caustic): strips are expanded to independent triangles so
+	// they concatenate; drawn with one drawPrimitives call per flush.
+	bool hasPendingSpriteBatch = false;
+	BatchKey pendingSpriteKey;
+	size_t pendingSpriteStartOffset = 0;
+	uint32_t pendingSpriteVertexCount = 0;
+	// Indexed (goo tiles, starburst sphere): already independent triangles via indices, so
+	// batches just need each submission's indices rebased onto the shared vertex range.
+	bool hasPendingMeshBatch = false;
+	BatchKey pendingMeshKey;
+	size_t pendingMeshVertexStartOffset = 0;
+	size_t pendingMeshIndexStartOffset = 0;
+	uint32_t pendingMeshVertexCount = 0;
+	uint32_t pendingMeshIndexCount = 0;
+
 	HSRendererImpl()
 	{
 		hsMatIdentity(modelStack[0]);
@@ -193,7 +253,119 @@ public:
 	}
 };
 
+// Issues the deferred draw call for whatever non-indexed (sprite/tunnel/caustic) geometry has
+// accumulated since the last flush, using the state captured in pendingSpriteKey — not whatever
+// impl->currentPipeline/currentCullMode/boundTextures happen to be *now*, since those may have
+// already moved on to the next batch by the time this flush actually runs.
+static void hsFlushSpriteBatch(HSRendererImpl *impl)
+{
+	if (!impl->hasPendingSpriteBatch || impl->pendingSpriteVertexCount == 0)
+	{
+		impl->hasPendingSpriteBatch = false;
+		impl->pendingSpriteVertexCount = 0;
+		return;
+	}
+
+	id<MTLRenderPipelineState> pso = nil;
+	id<MTLSamplerState> sampler = impl->samplerRepeat;
+	switch (impl->pendingSpriteKey.pipeline)
+	{
+		case HS_PIPELINE_SPRITE:  pso = impl->spritePSO; break;
+		case HS_PIPELINE_TUNNEL:  pso = impl->tunnelPSO; break;
+		case HS_PIPELINE_GOO:     pso = impl->gooPSO; sampler = impl->samplerClamp; break;
+		case HS_PIPELINE_CAUSTIC: pso = impl->causticPSO; break;
+	}
+
+	[impl->argTable setAddress:(impl->vertexBuffer.gpuAddress + impl->pendingSpriteStartOffset) atIndex:0];
+	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
+	[impl->argTable setSamplerState:sampler.gpuResourceID atIndex:0];
+	for (int unit = 0; unit < 3; ++unit)
+	{
+		auto it = impl->textures.find(impl->pendingSpriteKey.textures[unit]);
+		id<MTLTexture> tex = (it != impl->textures.end()) ? it->second : nil;
+		if (tex)
+			[impl->argTable setTexture:tex.gpuResourceID atIndex:unit];
+	}
+
+	[impl->encoder setCullMode:(impl->pendingSpriteKey.cullMode == HS_CULL_BACK) ? MTLCullModeBack : MTLCullModeNone];
+	[impl->encoder setRenderPipelineState:pso];
+	[impl->encoder setArgumentTable:impl->argTable atStages:MTLRenderStageVertex | MTLRenderStageFragment];
+	[impl->encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:impl->pendingSpriteVertexCount];
+
+	impl->hasPendingSpriteBatch = false;
+	impl->pendingSpriteVertexCount = 0;
+}
+
+// Same idea as hsFlushSpriteBatch, for the indexed (goo tiles / starburst sphere) path.
+static void hsFlushMeshBatch(HSRendererImpl *impl)
+{
+	if (!impl->hasPendingMeshBatch || impl->pendingMeshIndexCount == 0)
+	{
+		impl->hasPendingMeshBatch = false;
+		impl->pendingMeshIndexCount = 0;
+		impl->pendingMeshVertexCount = 0;
+		return;
+	}
+
+	[impl->argTable setAddress:(impl->vertexBuffer.gpuAddress + impl->pendingMeshVertexStartOffset) atIndex:0];
+	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
+	[impl->argTable setSamplerState:impl->samplerClamp.gpuResourceID atIndex:0];
+	for (int unit = 0; unit < 3; ++unit)
+	{
+		auto it = impl->textures.find(impl->pendingMeshKey.textures[unit]);
+		id<MTLTexture> tex = (it != impl->textures.end()) ? it->second : nil;
+		if (tex)
+			[impl->argTable setTexture:tex.gpuResourceID atIndex:unit];
+	}
+
+	[impl->encoder setCullMode:(impl->pendingMeshKey.cullMode == HS_CULL_BACK) ? MTLCullModeBack : MTLCullModeNone];
+	[impl->encoder setRenderPipelineState:impl->gooPSO];
+	[impl->encoder setArgumentTable:impl->argTable atStages:MTLRenderStageVertex | MTLRenderStageFragment];
+	[impl->encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+								indexCount:impl->pendingMeshIndexCount
+								 indexType:MTLIndexTypeUInt32
+							   indexBuffer:(impl->indexBuffer.gpuAddress + impl->pendingMeshIndexStartOffset)
+							 indexBufferLength:impl->pendingMeshIndexCount * sizeof(uint32_t)];
+
+	impl->hasPendingMeshBatch = false;
+	impl->pendingMeshIndexCount = 0;
+	impl->pendingMeshVertexCount = 0;
+}
+
+// Commit options whose feedback handler counts GPU completions and logs GPU-side errors,
+// which are otherwise completely silent with MTL4CommandQueue.
+static MTL4CommitOptions *hsCommitOptions(HSRendererImpl *impl, const char *what)
+{
+	std::shared_ptr<HSAtomicStats> gpuStats = impl->gpuStats;
+	uint32_t tag = impl->logTag;
+	MTL4CommitOptions *options = [MTL4CommitOptions new];
+	[options addFeedbackHandler:^(id<MTL4CommitFeedback> feedback) {
+		gpuStats->gpuCompleted++;
+		if (feedback.error)
+		{
+			uint64_t n = ++gpuStats->gpuErrors;
+			if (n <= 10 || n % 100 == 0)
+				os_log_error(HSLog(), "#%u GPU error on %{public}s commit (error #%llu): %{public}@",
+							 tag, what, n, feedback.error);
+		}
+	}];
+	return options;
+}
+
 HSRenderer::HSRenderer() : impl(new HSRendererImpl) {}
+
+void HSRenderer::setLogTag(uint32_t tag)
+{
+	impl->logTag = tag;
+}
+
+HSFrameStats HSRenderer::frameStats() const
+{
+	HSFrameStats s = impl->stats;
+	s.gpuCompleted = impl->gpuStats->gpuCompleted.load();
+	s.gpuErrors = impl->gpuStats->gpuErrors.load();
+	return s;
+}
 
 HSRenderer::~HSRenderer()
 {
@@ -241,6 +413,9 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	impl->frameEvent = [device newSharedEvent];
 	impl->frameEvent.signaledValue = 0;
 	impl->frameNumber = 0;
+	impl->setupEvent = [device newSharedEvent];
+	impl->setupEvent.signaledValue = 0;
+	impl->setupEventValue = 0;
 	impl->view = mtkView;
 
 	mtkView.device = device;
@@ -363,18 +538,59 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 bool HSRenderer::beginFrame()
 {
 	if (impl->frameInProgress)
+	{
+		impl->stats.skipReentrant++;
 		return false;	// re-entrant call (see frameInProgress's comment); drop this one
+	}
+
+	// Check whether the view can actually give us a drawable before touching any frame-
+	// tracking state (frameNumber/frameEvent/allocators) — matching the order Apple's own
+	// "Drawing a triangle with Metal 4" sample uses. Doing this check last (the previous
+	// order here) meant every call made during the window before the view has real geometry
+	// (e.g. the ViewBridge/LegacyViewController startup race this renderer has repeatedly hit)
+	// still advanced frameNumber, waited on frameEvent, and reset an allocator for a frame that
+	// was never actually going to submit any GPU work.
+	MTKView *view = impl->view;
+	MTL4RenderPassDescriptor *passDescriptor = view.currentMTL4RenderPassDescriptor;
+	id<CAMetalDrawable> drawable = view.currentDrawable;
+	if (!passDescriptor || !drawable)
+	{
+		if (!passDescriptor)
+			impl->stats.skipNoPassDescriptor++;
+		else
+			impl->stats.skipNoDrawable++;
+		return false;
+	}
+
 	impl->frameInProgress = true;
+	impl->drawable = drawable;
 
 	// Wait for the GPU to actually finish the frame kMaxFramesInFlight iterations back (not
 	// just for its commit() to return) before reclaiming the allocator it used.
 	impl->frameNumber++;
 	id<MTL4CommandAllocator> allocator = impl->allocators[impl->frameNumber % HSRendererImpl::kMaxFramesInFlight];
 	if (impl->frameNumber > HSRendererImpl::kMaxFramesInFlight)
-		[impl->frameEvent waitUntilSignaledValue:impl->frameNumber - HSRendererImpl::kMaxFramesInFlight timeoutMS:1000];
+	{
+		BOOL signaled = [impl->frameEvent waitUntilSignaledValue:impl->frameNumber - HSRendererImpl::kMaxFramesInFlight timeoutMS:1000];
+		if (!signaled)
+		{
+			// The wait timed out — the GPU hasn't actually confirmed it's done with this
+			// allocator yet. Resetting it anyway (the previous code did, ignoring the return
+			// value) is a real Metal API violation if the GPU is still recording into it, and
+			// is a plausible cause of the IOGPUMetalError/hang class of bug this renderer has
+			// hit before. Drop this frame instead; retry the same frame number next time
+			// rather than advancing past a slot that was never confirmed free.
+			impl->stats.skipFenceTimeout++;
+			os_log_error(HSLog(), "#%u frame fence wait timed out (frame %llu, GPU at %llu)",
+						 impl->logTag, impl->frameNumber, impl->frameEvent.signaledValue);
+			impl->frameNumber--;
+			impl->frameInProgress = false;
+			impl->drawable = nil;
+			return false;
+		}
+	}
 	[allocator reset];
 
-	MTKView *view = impl->view;
 	// attachToView ran while the view was still 0x0 (before AppKit/SwiftUI ever gave it a
 	// real size), so the residency set it registered for the view's drawables then may not
 	// be the one MTKView actually vends once the view is properly sized. Catch that swap
@@ -385,17 +601,6 @@ bool HSRenderer::beginFrame()
 		if (view.residencySet)
 			[impl->queue addResidencySet:view.residencySet];
 		impl->registeredViewResidencySet = view.residencySet;
-	}
-
-	MTL4RenderPassDescriptor *passDescriptor = view.currentMTL4RenderPassDescriptor;
-	impl->drawable = view.currentDrawable;
-	if (!passDescriptor || !impl->drawable)
-	{
-		impl->frameEvent.signaledValue = impl->frameNumber;	// no GPU work this frame; keep the bookkeeping consistent
-		impl->commandBuffer = nil;
-		impl->encoder = nil;
-		impl->frameInProgress = false;
-		return false;
 	}
 
 	passDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
@@ -414,6 +619,8 @@ bool HSRenderer::beginFrame()
 	impl->currentCullMode = HS_CULL_NONE;
 	impl->vertexBufferOffset = 0;
 	impl->indexBufferOffset = 0;
+	impl->hasPendingSpriteBatch = false;
+	impl->hasPendingMeshBatch = false;
 	return true;
 }
 
@@ -422,6 +629,8 @@ void HSRenderer::endFrame()
 	if (!impl->commandBuffer)
 		return;
 
+	hsFlushSpriteBatch(impl);
+	hsFlushMeshBatch(impl);
 	[impl->encoder endEncoding];
 	[impl->commandBuffer endCommandBuffer];
 
@@ -430,7 +639,8 @@ void HSRenderer::endFrame()
 
 	[impl->queue waitForDrawable:drawable];
 	__block id<MTL4CommandBuffer> retainedBuffer = commandBuffer;	// keep alive until the GPU actually runs it
-	[impl->queue commit:&retainedBuffer count:1];
+	[impl->queue commit:&retainedBuffer count:1 options:hsCommitOptions(impl, "frame")];
+	impl->stats.presented++;
 	[impl->queue signalDrawable:drawable];
 	[drawable present];
 	// Signaled once the GPU finishes this frame's passes, not merely once commit() returns
@@ -602,9 +812,11 @@ void HSRenderer::setPipeline(HSPipeline pipeline)
 
 void HSRenderer::setCullMode(HSCullMode mode)
 {
+	// Deferred to flush time (hsFlushSpriteBatch/hsFlushMeshBatch), as part of each batch's
+	// key, not applied to the encoder here — a pending batch accumulated under the old cull
+	// mode hasn't actually drawn yet, so changing the encoder's cull mode immediately would
+	// retroactively apply the new mode to geometry that was recorded under the old one.
 	impl->currentCullMode = mode;
-	if (impl->encoder)
-		[impl->encoder setCullMode:(mode == HS_CULL_BACK) ? MTLCullModeBack : MTLCullModeNone];
 }
 
 void HSRenderer::bindTexture(int unit, HSTextureRef texture)
@@ -662,45 +874,62 @@ void HSRenderer::vertex3fv(const float v[3])
 	vertex3f(v[0], v[1], v[2]);
 }
 
+// Expands the accumulated triangle strip into independent triangles (triangle k of a strip
+// is vertices k, k+1, k+2, with the first two swapped on odd k to preserve winding) and either
+// appends it to the current pending batch, or flushes that batch and starts a new one, depending
+// on whether pipeline/cullMode/textures have changed since the last end(). This is what collapses
+// e.g. 2000 stars' worth of individual quad draws into a single drawPrimitives call.
 void HSRenderer::end()
 {
 	size_t vertexCount = impl->vertexAccumulator.size() / 14;
 	if (vertexCount < 3 || !impl->encoder)
+	{
+		impl->vertexAccumulator.clear();
 		return;
+	}
 
-	size_t byteSize = impl->vertexAccumulator.size() * sizeof(float);
+	uint32_t triangleCount = uint32_t(vertexCount - 2);
+	uint32_t outVertexCount = triangleCount * 3;
+	size_t byteSize = size_t(outVertexCount) * 14 * sizeof(float);
+
+	HSRendererImpl::BatchKey key;
+	key.pipeline = impl->currentPipeline;
+	key.cullMode = impl->currentCullMode;
+	key.textures[0] = impl->boundTextures[0];
+	key.textures[1] = impl->boundTextures[1];
+	key.textures[2] = impl->boundTextures[2];
+
+	bool canAppend = impl->hasPendingSpriteBatch && impl->pendingSpriteKey == key;
+	if (!canAppend)
+		hsFlushSpriteBatch(impl);
 	if (impl->vertexBufferOffset + byteSize > kVertexBufferCapacity)
+	{
+		impl->vertexAccumulator.clear();
 		return;	// out of ring space for this frame; drop the draw rather than corrupt memory
-
-	uint8_t *dest = static_cast<uint8_t *>(impl->vertexBuffer.contents) + impl->vertexBufferOffset;
-	std::memcpy(dest, impl->vertexAccumulator.data(), byteSize);
-
-	id<MTLRenderPipelineState> pso = nil;
-	id<MTLSamplerState> sampler = impl->samplerRepeat;
-	switch (impl->currentPipeline)
+	}
+	if (!canAppend)
 	{
-		case HS_PIPELINE_SPRITE:  pso = impl->spritePSO; break;
-		case HS_PIPELINE_TUNNEL:  pso = impl->tunnelPSO; break;
-		case HS_PIPELINE_GOO:     pso = impl->gooPSO; sampler = impl->samplerClamp; break;
-		case HS_PIPELINE_CAUSTIC: pso = impl->causticPSO; break;
+		impl->pendingSpriteKey = key;
+		impl->pendingSpriteStartOffset = impl->vertexBufferOffset;
+		impl->pendingSpriteVertexCount = 0;
+		impl->hasPendingSpriteBatch = true;
 	}
 
-	[impl->argTable setAddress:(impl->vertexBuffer.gpuAddress + impl->vertexBufferOffset) atIndex:0];
-	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
-	[impl->argTable setSamplerState:sampler.gpuResourceID atIndex:0];
-	for (int unit = 0; unit < 3; ++unit)
+	float *dest = reinterpret_cast<float *>(static_cast<uint8_t *>(impl->vertexBuffer.contents) + impl->vertexBufferOffset);
+	const float *src = impl->vertexAccumulator.data();
+	for (uint32_t tri = 0; tri < triangleCount; ++tri)
 	{
-		auto it = impl->textures.find(impl->boundTextures[unit]);
-		id<MTLTexture> tex = (it != impl->textures.end()) ? it->second : nil;
-		if (tex)
-			[impl->argTable setTexture:tex.gpuResourceID atIndex:unit];
+		uint32_t i0 = tri, i1 = tri + 1, i2 = tri + 2;
+		if (tri % 2 != 0)
+			std::swap(i0, i1);
+		std::memcpy(dest, src + size_t(i0) * 14, 14 * sizeof(float));
+		std::memcpy(dest + 14, src + size_t(i1) * 14, 14 * sizeof(float));
+		std::memcpy(dest + 28, src + size_t(i2) * 14, 14 * sizeof(float));
+		dest += 42;
 	}
-
-	[impl->encoder setRenderPipelineState:pso];
-	[impl->encoder setArgumentTable:impl->argTable atStages:MTLRenderStageVertex | MTLRenderStageFragment];
-	[impl->encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:vertexCount];
 
 	impl->vertexBufferOffset += byteSize;
+	impl->pendingSpriteVertexCount += outVertexCount;
 	impl->vertexAccumulator.clear();
 }
 
@@ -711,6 +940,12 @@ void HSRenderer::end()
 // matrix) as a cube lookup direction. That's only correct because goo tiles are only ever
 // pure-translated (never rotated/scaled) onto the model stack; if that ever changes, this needs
 // a proper normal-matrix transform.
+// Goo tiles and the starburst sphere are already independent triangles via their index buffer,
+// so batching them is simpler than the strip case: just rebase each submission's indices onto
+// wherever its vertices land in the shared pending-batch vertex range, and defer the actual
+// drawIndexedPrimitives call the same way end() does. In practice all goo tiles (and often the
+// starburst sphere too, since it reuses the same wavy-normal/nebula textures) share one key and
+// collapse into a single draw call per frame instead of one per tile.
 void HSRenderer::drawIndexedMesh(const float *interleavedNormalPosition, uint32_t vertexCount,
 								  const uint32_t *indices, uint32_t indexCount)
 {
@@ -719,9 +954,29 @@ void HSRenderer::drawIndexedMesh(const float *interleavedNormalPosition, uint32_
 
 	size_t vertexByteSize = size_t(vertexCount) * 14 * sizeof(float);
 	size_t indexByteSize = size_t(indexCount) * sizeof(uint32_t);
+
+	HSRendererImpl::BatchKey key;
+	key.pipeline = HS_PIPELINE_GOO;
+	key.cullMode = impl->currentCullMode;
+	key.textures[0] = impl->boundTextures[0];
+	key.textures[1] = impl->boundTextures[1];
+	key.textures[2] = impl->boundTextures[2];
+
+	bool canAppend = impl->hasPendingMeshBatch && impl->pendingMeshKey == key;
+	if (!canAppend)
+		hsFlushMeshBatch(impl);
 	if (impl->vertexBufferOffset + vertexByteSize > kVertexBufferCapacity
 		|| impl->indexBufferOffset + indexByteSize > kIndexBufferCapacity)
 		return;	// out of ring space for this frame; drop the draw rather than corrupt memory
+	if (!canAppend)
+	{
+		impl->pendingMeshKey = key;
+		impl->pendingMeshVertexStartOffset = impl->vertexBufferOffset;
+		impl->pendingMeshIndexStartOffset = impl->indexBufferOffset;
+		impl->pendingMeshVertexCount = 0;
+		impl->pendingMeshIndexCount = 0;
+		impl->hasPendingMeshBatch = true;
+	}
 
 	float *dest = reinterpret_cast<float *>(static_cast<uint8_t *>(impl->vertexBuffer.contents) + impl->vertexBufferOffset);
 	for (uint32_t i = 0; i < vertexCount; ++i)
@@ -739,29 +994,39 @@ void HSRenderer::drawIndexedMesh(const float *interleavedNormalPosition, uint32_
 		v[10] = impl->currentColor[0]; v[11] = impl->currentColor[1]; v[12] = impl->currentColor[2]; v[13] = impl->currentColor[3];
 	}
 
-	std::memcpy(static_cast<uint8_t *>(impl->indexBuffer.contents) + impl->indexBufferOffset, indices, indexByteSize);
-
-	[impl->argTable setAddress:(impl->vertexBuffer.gpuAddress + impl->vertexBufferOffset) atIndex:0];
-	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
-	[impl->argTable setSamplerState:impl->samplerClamp.gpuResourceID atIndex:0];
-	for (int unit = 0; unit < 3; ++unit)
-	{
-		auto it = impl->textures.find(impl->boundTextures[unit]);
-		id<MTLTexture> tex = (it != impl->textures.end()) ? it->second : nil;
-		if (tex)
-			[impl->argTable setTexture:tex.gpuResourceID atIndex:unit];
-	}
-
-	[impl->encoder setRenderPipelineState:impl->gooPSO];
-	[impl->encoder setArgumentTable:impl->argTable atStages:MTLRenderStageVertex | MTLRenderStageFragment];
-	[impl->encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
-								indexCount:indexCount
-								 indexType:MTLIndexTypeUInt32
-							   indexBuffer:(impl->indexBuffer.gpuAddress + impl->indexBufferOffset)
-							 indexBufferLength:indexByteSize];
+	uint32_t *destIndices = reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(impl->indexBuffer.contents) + impl->indexBufferOffset);
+	uint32_t baseVertex = impl->pendingMeshVertexCount;
+	for (uint32_t i = 0; i < indexCount; ++i)
+		destIndices[i] = indices[i] + baseVertex;
 
 	impl->vertexBufferOffset += vertexByteSize;
 	impl->indexBufferOffset += indexByteSize;
+	impl->pendingMeshVertexCount += vertexCount;
+	impl->pendingMeshIndexCount += indexCount;
+}
+
+// Commits a one-off setup command buffer and schedules a GPU-side signal of impl->setupEvent
+// once it completes — no CPU wait here, and waitForSetupCompletion() below doesn't CPU-wait
+// either. Blocking the calling thread for GPU completion turned out to be unsafe to do even
+// once during initSaver(): it's called deep in the screen saver extension's startup path, and
+// that environment appears to have a responsiveness watchdog that doesn't tolerate it — the
+// previous CPU-blocking version of this fix made the preview blank out ~4 times out of 5
+// rather than fixing the race it was meant to fix.
+static void hsCommitSetupSubmission(HSRendererImpl *impl, id<MTL4CommandBuffer> cmdBuffer)
+{
+	impl->setupEventValue++;
+	id<MTL4CommandBuffer> buffers[1] = {cmdBuffer};
+	[impl->queue commit:buffers count:1 options:hsCommitOptions(impl, "setup")];
+	[impl->queue signalEvent:impl->setupEvent value:impl->setupEventValue];
+}
+
+void HSRenderer::waitForSetupCompletion()
+{
+	// GPU-side wait, not a CPU-side one: schedules the queue to hold off running any future
+	// work (i.e. the main render loop's first frame, submitted well after this call returns)
+	// until the setup event reaches this value. The calling thread is never blocked.
+	if (impl->setupEventValue > 0)
+		[impl->queue waitForEvent:impl->setupEvent value:impl->setupEventValue];
 }
 
 HSTextureRef HSRenderer::createTexture2D(int width, int height, const uint8_t *rgba8, bool mipmapped)
@@ -777,6 +1042,12 @@ HSTextureRef HSRenderer::createTexture2D(int width, int height, const uint8_t *r
 
 	[texture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 withBytes:rgba8 bytesPerRow:width * 4];
 
+	// Residency must be established before any command buffer that touches this texture is
+	// committed, including the mipmap-generation pass right below — a texture isn't
+	// guaranteed GPU-accessible just because it was just created.
+	[impl->residencySet addAllocation:texture];
+	[impl->residencySet commit];
+
 	if (mipmapped)
 	{
 		// A throwaway allocator, not one of the per-frame allocators: this can be called
@@ -790,14 +1061,8 @@ HSTextureRef HSRenderer::createTexture2D(int width, int height, const uint8_t *r
 		[blit generateMipmapsForTexture:texture];
 		[blit endEncoding];
 		[cmdBuffer endCommandBuffer];
-		id<MTL4CommandBuffer> buffers[1] = {cmdBuffer};
-		[impl->queue commit:buffers count:1];
-		// No CPU wait needed: subsequent frame-rendering command buffers go on this same
-		// queue, so Metal guarantees this mipmap generation finishes first on the GPU.
+		hsCommitSetupSubmission(impl, cmdBuffer);
 	}
-
-	[impl->residencySet addAllocation:texture];
-	[impl->residencySet commit];
 
 	HSTextureRef ref = impl->nextTextureRef++;
 	impl->textures[ref] = texture;
@@ -827,6 +1092,11 @@ HSTextureRef HSRenderer::createTextureCube(int size, const uint8_t *facesRGBA8[6
 				  bytesPerImage:0];
 	}
 
+	// Residency must be established before any command buffer that touches this texture is
+	// committed, including the mipmap-generation pass right below.
+	[impl->residencySet addAllocation:texture];
+	[impl->residencySet commit];
+
 	if (mipmapped)
 	{
 		// Throwaway allocator: see createTexture2D's mipmap path for why this can't reuse one
@@ -839,12 +1109,8 @@ HSTextureRef HSRenderer::createTextureCube(int size, const uint8_t *facesRGBA8[6
 		[blit generateMipmapsForTexture:texture];
 		[blit endEncoding];
 		[cmdBuffer endCommandBuffer];
-		id<MTL4CommandBuffer> buffers[1] = {cmdBuffer};
-		[impl->queue commit:buffers count:1];
+		hsCommitSetupSubmission(impl, cmdBuffer);
 	}
-
-	[impl->residencySet addAllocation:texture];
-	[impl->residencySet commit];
 
 	HSTextureRef ref = impl->nextTextureRef++;
 	impl->textures[ref] = texture;
@@ -871,6 +1137,12 @@ void HSRenderer::beginCausticFrame(int size)
 	impl->causticTexture = [impl->device newTextureWithDescriptor:desc];
 	impl->causticSize = size;
 
+	// Residency must be established before the render pass below (which writes to this
+	// texture) is committed — a texture isn't guaranteed GPU-accessible just because it was
+	// just created.
+	[impl->residencySet addAllocation:impl->causticTexture];
+	[impl->residencySet commit];
+
 	id<MTL4CommandAllocator> allocator = [impl->device newCommandAllocator];
 	impl->setupAllocators.push_back(allocator);
 
@@ -891,10 +1163,14 @@ void HSRenderer::beginCausticFrame(int size)
 	[impl->encoder setCullMode:MTLCullModeNone];
 	impl->currentCullMode = HS_CULL_NONE;
 	impl->vertexBufferOffset = 0;
+	impl->hasPendingSpriteBatch = false;
+	impl->hasPendingMeshBatch = false;
 }
 
 HSTextureRef HSRenderer::endCausticFrame()
 {
+	hsFlushSpriteBatch(impl);
+	hsFlushMeshBatch(impl);
 	[impl->encoder endEncoding];
 
 	id<MTL4ComputeCommandEncoder> mipEncoder = [impl->commandBuffer computeCommandEncoder];
@@ -902,15 +1178,7 @@ HSTextureRef HSRenderer::endCausticFrame()
 	[mipEncoder endEncoding];
 
 	[impl->commandBuffer endCommandBuffer];
-	id<MTL4CommandBuffer> buffers[1] = {impl->commandBuffer};
-	[impl->queue commit:buffers count:1];
-	// No CPU wait: the real per-frame rendering that will sample this texture doesn't start
-	// until the main loop begins, well after initSaver() (and every beginCausticFrame/
-	// endCausticFrame call it makes) returns, and everything commits to the same queue —
-	// the same same-queue-ordering guarantee createTexture2D's mipmap generation relies on.
-
-	[impl->residencySet addAllocation:impl->causticTexture];
-	[impl->residencySet commit];
+	hsCommitSetupSubmission(impl, impl->commandBuffer);
 
 	HSTextureRef ref = impl->nextTextureRef++;
 	impl->textures[ref] = impl->causticTexture;

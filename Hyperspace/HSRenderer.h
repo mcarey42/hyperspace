@@ -46,6 +46,18 @@ const HSTextureRef HS_INVALID_TEXTURE = 0;
 
 class HSRendererImpl;
 
+// Running totals for diagnostics; HyperspaceView diffs successive snapshots.
+struct HSFrameStats
+{
+	uint64_t presented = 0;			// frames committed + presented by endFrame()
+	uint64_t skipReentrant = 0;		// beginFrame() dropped: already inside a frame
+	uint64_t skipNoPassDescriptor = 0;	// beginFrame() dropped: view vended no render pass descriptor
+	uint64_t skipNoDrawable = 0;		// beginFrame() dropped: view vended no drawable
+	uint64_t skipFenceTimeout = 0;	// beginFrame() dropped: GPU hadn't finished the frame 3 back within 1s
+	uint64_t gpuCompleted = 0;		// commit feedback received (frames + setup work)
+	uint64_t gpuErrors = 0;			// commit feedback reported an NSError
+};
+
 // Owns the Metal device/queue/pipelines for one HyperspaceView instance.
 class HSRenderer
 {
@@ -122,6 +134,22 @@ public:
 	// framebuffer approach (which broke on anything smaller than the render size).
 	void beginCausticFrame(int size);
 	HSTextureRef endCausticFrame();	// generates mipmaps, returns the finished texture
+
+	// Schedules a GPU-side (not CPU-side) wait so the queue holds off running any future work
+	// — i.e. the main render loop's first frame — until every one-off setup submission so far
+	// (mipmap generation, caustic render+mipmap passes) has actually finished on the GPU.
+	// MTL4CommandQueue doesn't guarantee that separately-committed command buffers execute in
+	// submission order the way classic MTLCommandQueue's implicit hazard tracking did, so
+	// without this, the main render loop's first few frames can sample a texture before its
+	// generation commands have actually finished writing it. This call itself never blocks the
+	// calling thread — CPU-blocking here (even just once) turned out to be unsafe this deep in
+	// the screen saver extension's startup path. Call once, after all setup work is issued
+	// (i.e. at the end of initSaver()).
+	void waitForSetupCompletion();
+
+	// Diagnostics: tag used in this renderer's log lines, and a snapshot of its counters.
+	void setLogTag(uint32_t tag);
+	HSFrameStats frameStats() const;
 
 private:
 	HSRendererImpl *impl;
