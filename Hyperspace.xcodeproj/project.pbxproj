@@ -74,7 +74,6 @@
 		E0CDA07F09A8E6680004FDE6 /* tunnel.h in Headers */ = {isa = PBXBuildFile; fileRef = E0CDA07E09A8E6680004FDE6 /* tunnel.h */; };
 		E0CDA08109A8E66E0004FDE6 /* wavyNormalCubeMaps.h in Headers */ = {isa = PBXBuildFile; fileRef = E0CDA08009A8E66E0004FDE6 /* wavyNormalCubeMaps.h */; };
 		E0CDA09509A8E8270004FDE6 /* Hyperspace.h in Headers */ = {isa = PBXBuildFile; fileRef = E0CDA09409A8E8270004FDE6 /* Hyperspace.h */; };
-		E0CDA0C209A8F5C50004FDE6 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E0CDA0C109A8F5C50004FDE6 /* OpenGL.framework */; };
 		E0CDA21209A900520004FDE6 /* Rgbhsl.h in Headers */ = {isa = PBXBuildFile; fileRef = E0CDA21109A900520004FDE6 /* Rgbhsl.h */; };
 		E0CDA21409A900660004FDE6 /* Rgbhsl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E0CDA21309A900660004FDE6 /* Rgbhsl.cpp */; };
 /* End PBXBuildFile section */
@@ -150,7 +149,6 @@
 		E0CDA07E09A8E6680004FDE6 /* tunnel.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = tunnel.h; sourceTree = "<group>"; };
 		E0CDA08009A8E66E0004FDE6 /* wavyNormalCubeMaps.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = wavyNormalCubeMaps.h; sourceTree = "<group>"; };
 		E0CDA09409A8E8270004FDE6 /* Hyperspace.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Hyperspace.h; sourceTree = "<group>"; };
-		E0CDA0C109A8F5C50004FDE6 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = /System/Library/Frameworks/OpenGL.framework; sourceTree = "<absolute>"; };
 		E0CDA21109A900520004FDE6 /* Rgbhsl.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; path = Rgbhsl.h; sourceTree = "<group>"; };
 		E0CDA21309A900660004FDE6 /* Rgbhsl.cpp */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.cpp.cpp; path = Rgbhsl.cpp; sourceTree = "<group>"; };
 		F50079790118B23001CA0E54 /* HyperspaceView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HyperspaceView.h; sourceTree = "<group>"; };
@@ -171,7 +169,6 @@
 			files = (
 				8D255ACE0486D3F9007BF209 /* Cocoa.framework in Frameworks */,
 				8D255ACF0486D3F9007BF209 /* ScreenSaver.framework in Frameworks */,
-				E0CDA0C209A8F5C50004FDE6 /* OpenGL.framework in Frameworks */,
 			);
 		};
 		B415670530833A93008197CF /* Frameworks */ = {
@@ -232,7 +229,6 @@
 			children = (
 				1058C7ADFEA557BF11CA2CBB /* Cocoa.framework */,
 				06F27B2DFFEEEFEF11CA0E56 /* ScreenSaver.framework */,
-				E0CDA0C109A8F5C50004FDE6 /* OpenGL.framework */,
 			);
 			name = "Linked Frameworks";
 			sourceTree = "<group>";
