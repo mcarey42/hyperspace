@@ -3,7 +3,7 @@
   "strings" : {
     "5.title" : {
       "comment" : "Class = \"NSWindow\"; title = \"Window\"; ObjectID = \"5\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -27,7 +27,7 @@
     },
     "61.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"Hyperspace\"; ObjectID = \"61\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -51,7 +51,7 @@
     },
     "62.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"(don't localize)\"; ObjectID = \"62\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -75,7 +75,7 @@
     },
     "63.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"Copyright © 2005-2010 Terence M. Welsh.\"; ObjectID = \"63\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -99,7 +99,7 @@
     },
     "64.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"macOS port by Nick Zitzmann\"; ObjectID = \"64\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -123,7 +123,7 @@
     },
     "65.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"Resolution of geometry:\"; ObjectID = \"65\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -147,7 +147,7 @@
     },
     "66.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"Number of stars:\"; ObjectID = \"66\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -171,7 +171,7 @@
     },
     "67.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"Speed:\"; ObjectID = \"67\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -195,7 +195,7 @@
     },
     "68.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"Size of stars:\"; ObjectID = \"68\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -219,7 +219,7 @@
     },
     "69.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"View depth:\"; ObjectID = \"69\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -243,7 +243,7 @@
     },
     "70.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"Field of view:\"; ObjectID = \"70\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -267,7 +267,7 @@
     },
     "71.title" : {
       "comment" : "Class = \"NSButtonCell\"; title = \"Enable pixel & vertex shaders (if available)\"; ObjectID = \"71\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -291,7 +291,7 @@
     },
     "72.title" : {
       "comment" : "Class = \"NSButtonCell\"; title = \"Main screen only\"; ObjectID = \"72\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -315,7 +315,7 @@
     },
     "73.title" : {
       "comment" : "Class = \"NSButtonCell\"; title = \"Close\"; ObjectID = \"73\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -339,7 +339,7 @@
     },
     "74.title" : {
       "comment" : "Class = \"NSButtonCell\"; title = \"Defaults\"; ObjectID = \"74\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -363,7 +363,7 @@
     },
     "76.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"76\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -387,7 +387,7 @@
     },
     "79.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"79\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -411,7 +411,7 @@
     },
     "80.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"80\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -435,7 +435,7 @@
     },
     "81.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"81\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -459,7 +459,7 @@
     },
     "82.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"82\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -483,7 +483,7 @@
     },
     "83.title" : {
       "comment" : "Class = \"NSTextFieldCell\"; title = \"#\"; ObjectID = \"83\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -507,7 +507,7 @@
     },
     "88.title" : {
       "comment" : "Class = \"NSButtonCell\"; title = \"Enable the nebula\"; ObjectID = \"88\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -531,7 +531,7 @@
     },
     "90.title" : {
       "comment" : "Class = \"NSButtonCell\"; title = \"Enable wormholes\"; ObjectID = \"90\";",
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
