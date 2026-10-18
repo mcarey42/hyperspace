@@ -174,7 +174,65 @@ void draw(HyperspaceSaverSettings *inSettings){
 	inSettings->renderer->getCurrentMatrix(inSettings->modelMat);
 	inSettings->unroll = camRoll[0] * RS_RAD2DEG;
 
-	// TODO(Phase 2.3-2.5): goo update, and stars/flare/sun/tunnel/starburst rendering via HSRenderer.
+	// TODO(Phase 2.5): goo update.
+
+	// draw stars
+	inSettings->renderer->setPipeline(HS_PIPELINE_SPRITE);
+	inSettings->renderer->setCullMode(HS_CULL_BACK);
+	inSettings->renderer->bindTexture(0, inSettings->flaretex[0]);
+	static float temppos[2];
+	for(int i=0; i<inSettings->dStars; i++){
+		temppos[0] = inSettings->stars[i]->pos[0] - inSettings->camPos[0];
+		temppos[1] = inSettings->stars[i]->pos[2] - inSettings->camPos[2];
+		if(temppos[0] > inSettings->depth){
+			inSettings->stars[i]->pos[0] -= inSettings->depth * 2.0f;
+			inSettings->stars[i]->lastPos[0] -= inSettings->depth * 2.0f;
+		}
+		if(temppos[0] < inSettings->depth*-1){
+			inSettings->stars[i]->pos[0] += inSettings->depth * 2.0f;
+			inSettings->stars[i]->lastPos[0] += inSettings->depth * 2.0f;
+		}
+		if(temppos[1] > inSettings->depth){
+			inSettings->stars[i]->pos[2] -= inSettings->depth * 2.0f;
+			inSettings->stars[i]->lastPos[2] -= inSettings->depth * 2.0f;
+		}
+		if(temppos[1] < inSettings->depth*-1){
+			inSettings->stars[i]->pos[2] += inSettings->depth * 2.0f;
+			inSettings->stars[i]->lastPos[2] += inSettings->depth * 2.0f;
+		}
+		inSettings->stars[i]->draw(inSettings->camPos, inSettings->unroll, inSettings->modelMat, inSettings->projMat, inSettings->viewport, inSettings->renderer);
+	}
+	inSettings->renderer->setCullMode(HS_CULL_NONE);
+
+	// pick animated texture frame
+	static float textureTime = 0.0f;
+	textureTime += inSettings->frameTime;
+	// loop frames every 2 seconds
+	const float texFrameTime(2.0f / float(inSettings->numAnimTexFrames));
+	while(textureTime > texFrameTime){
+		textureTime -= texFrameTime;
+		inSettings->whichTexture ++;
+	}
+	while(inSettings->whichTexture >= inSettings->numAnimTexFrames)
+		inSettings->whichTexture -= inSettings->numAnimTexFrames;
+
+	// alpha component gets normalmap lerp value
+	const float lerp = textureTime / texFrameTime;
+	(void)lerp;	// used once goo/tunnel land in Phase 2.4-2.5
+
+	// TODO(Phase 2.5): starburst. TODO(Phase 2.4): tunnel.
+
+	// draw sun with lens flare
+	inSettings->renderer->setFog(inSettings->depth * 0.7f, inSettings->depth, false);
+	float flarepos[3] = {0.0f, 2.0f, 0.0f};
+	inSettings->renderer->setPipeline(HS_PIPELINE_SPRITE);
+	inSettings->renderer->bindTexture(0, inSettings->flaretex[0]);
+	inSettings->sunStar->draw(inSettings->camPos, inSettings->unroll, inSettings->modelMat, inSettings->projMat, inSettings->viewport, inSettings->renderer);
+	float diff[3] = {flarepos[0] - inSettings->camPos[0], flarepos[1] - inSettings->camPos[1], flarepos[2] - inSettings->camPos[2]};
+	float alpha = 0.5f - 0.005f * sqrtf(diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]);
+	if(alpha > 0.0f)
+		flare(flarepos, 1.0f, 1.0f, 1.0f, alpha, inSettings);
+	inSettings->renderer->setFog(inSettings->depth * 0.7f, inSettings->depth, true);
 }
 
 
@@ -264,19 +322,61 @@ void initSaver(HyperspaceSaverSettings *inSettings){
 	inSettings->numAnimTexFrames = 20;
 	inSettings->whichTexture = 0;
 
+	initFlares(inSettings);
+
 	inSettings->thePath = new splinePath((inSettings->dDepth * 2) + 6);
 
 	// To avoid popping, depth, which will be used for fogging, is set to
 	// dDepth * goo grid size - size of one goo cubelet
 	inSettings->depth = float(inSettings->dDepth) * 2.0f - 2.0f / float(inSettings->dResolution);
 
-	// TODO(Phase 2.3-2.5): recreate flares/tunnel/goo/stars/starburst/nebula/fog via HSRenderer.
+	// TODO(Phase 2.5): goo.
+
+	inSettings->stars = new stretchedParticle*[inSettings->dStars];
+	for(int i=0; i<inSettings->dStars; i++){
+		inSettings->stars[i] = new stretchedParticle;
+		inSettings->stars[i]->radius = rsRandf(float(inSettings->dStarSize) * 0.0005f) + float(inSettings->dStarSize) * 0.0005f;
+		if(i % 10){  // usually bland stars
+			inSettings->stars[i]->color[0] = 0.8f + rsRandf(0.2f);
+			inSettings->stars[i]->color[1] = 0.8f + rsRandf(0.2f);
+			inSettings->stars[i]->color[2] = 0.8f + rsRandf(0.2f);
+		}
+		else{  // occasionally a colorful one
+			inSettings->stars[i]->color[0] = 0.3f + rsRandf(0.7f);
+			inSettings->stars[i]->color[1] = 0.3f + rsRandf(0.7f);
+			inSettings->stars[i]->color[2] = 0.3f + rsRandf(0.7f);
+			inSettings->stars[i]->color[rsRandi(3)] = 1.0f;
+		}
+		inSettings->stars[i]->color[rsRandi(3)] = 1.0f;
+		inSettings->stars[i]->pos[0] = rsRandf(2.0f * inSettings->depth) - inSettings->depth;
+		inSettings->stars[i]->pos[1] = rsRandf(4.0f) - 2.0f;
+		inSettings->stars[i]->pos[2] = rsRandf(2.0f * inSettings->depth) - inSettings->depth;
+		inSettings->stars[i]->fov = float(inSettings->dFov);
+	}
+
+	inSettings->sunStar = new stretchedParticle;
+	inSettings->sunStar->radius = float(inSettings->dStarSize) * 0.004f;
+	inSettings->sunStar->pos[0] = 0.0f;
+	inSettings->sunStar->pos[1] = 2.0f;
+	inSettings->sunStar->pos[2] = 0.0f;
+	inSettings->sunStar->fov = float(inSettings->dFov);
+
+	// TODO(Phase 2.5): starburst, nebula cube map.
+
+	inSettings->renderer->setFog(inSettings->depth * 0.7f, inSettings->depth, true);
+
 	inSettings->readyToDraw = 1;
 }
 
 
 void cleanUp(HyperspaceSaverSettings *inSettings){
-	// TODO(Phase 2.3-2.5): free effect objects once they're reallocated in initSaver again.
+	// TODO(Phase 2.5): free goo/starburst/nebula once they're allocated again.
+	for(int i=0; i<inSettings->dStars; i++)
+		delete inSettings->stars[i];
+	delete [] inSettings->stars;
+	delete inSettings->sunStar;
+	for(int i=0; i<4; i++)
+		inSettings->renderer->destroyTexture(inSettings->flaretex[i]);
 	delete inSettings->thePath;
 	inSettings->first = 1;
 }

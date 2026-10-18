@@ -11,6 +11,19 @@
 #import <QuartzCore/QuartzCore.h>
 #import <cmath>
 #import <cstring>
+#import <vector>
+#import <map>
+
+// Pure anchor for +[NSBundle bundleForClass:], so the Metal library always loads from
+// this .saver bundle regardless of which process (legacyScreenSaver, HyperspaceHost, the
+// System Settings preview) has loaded it.
+@interface HSRendererBundleAnchor : NSObject
+@end
+@implementation HSRendererBundleAnchor
+@end
+
+static const size_t kVertexBufferCapacity = 4 * 1024 * 1024;	// 4MB, reset every frame
+static const size_t kVertexStride = sizeof(float) * 14;	// clipPosition(4) + eyePosition(3) + attrib3(3) + color(4)
 
 static const int kMaxMatrixStackDepth = 32;
 
@@ -88,7 +101,12 @@ public:
 	id<MTL4CommandQueue> queue = nil;
 	id<MTL4CommandAllocator> allocator = nil;
 	id<MTLResidencySet> residencySet = nil;
-	dispatch_semaphore_t frameSemaphore = nullptr;	// single-buffered: wait for the previous frame before reusing the allocator
+	// Single-buffered: an MTL4CommandAllocator can't be reset until the GPU has actually
+	// finished the passes it recorded (commit() returning only means the CPU handed the
+	// buffer to the queue, not that the GPU is done with it) — so this waits on a real
+	// GPU-signaled event rather than a semaphore bumped at commit time.
+	id<MTLSharedEvent> frameEvent = nil;
+	uint64_t frameNumber = 0;
 
 	__weak MTKView *view = nil;
 
@@ -102,6 +120,36 @@ public:
 	double modelStack[kMaxMatrixStackDepth][16];
 	int stackTop = 0;
 	double projectionMatrix[16];
+
+	// Pipelines, one sampler for everything (linear, clamp-to-edge; fine for
+	// non-mipmapped flare sprites and, later, clamped cube maps).
+	id<MTLLibrary> library = nil;
+	id<MTL4Compiler> compiler = nil;
+	id<MTLRenderPipelineState> spritePSO = nil;
+	id<MTLRenderPipelineState> tunnelPSO = nil;
+	id<MTLRenderPipelineState> gooPSO = nil;
+	id<MTLRenderPipelineState> causticPSO = nil;
+	id<MTLSamplerState> sampler = nil;
+	id<MTL4ArgumentTable> argTable = nil;
+
+	// Per-frame dynamic vertex buffer: a simple bump allocator reset every beginFrame.
+	id<MTLBuffer> vertexBuffer = nil;
+	size_t vertexBufferOffset = 0;
+
+	// Fog uniforms, matching HSFogUniforms in Shaders.metal.
+	id<MTLBuffer> fogBuffer = nil;
+
+	// Texture storage.
+	std::map<HSTextureRef, id<MTLTexture>> textures;
+	HSTextureRef nextTextureRef = 1;
+
+	// Immediate-mode state.
+	HSPipeline currentPipeline = HS_PIPELINE_SPRITE;
+	HSCullMode currentCullMode = HS_CULL_NONE;
+	HSTextureRef boundTextures[3] = {HS_INVALID_TEXTURE, HS_INVALID_TEXTURE, HS_INVALID_TEXTURE};
+	float currentColor[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+	float currentAttrib3[3] = {0.0f, 0.0f, 0.0f};
+	std::vector<float> vertexAccumulator;	// CPU staging for begin/vertex*/end
 
 	HSRendererImpl()
 	{
@@ -150,7 +198,9 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	impl->queue = queue;
 	impl->allocator = allocator;
 	impl->residencySet = residencySet;
-	impl->frameSemaphore = dispatch_semaphore_create(1);
+	impl->frameEvent = [device newSharedEvent];
+	impl->frameEvent.signaledValue = 0;
+	impl->frameNumber = 0;
 	impl->view = mtkView;
 
 	mtkView.device = device;
@@ -160,12 +210,107 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	// The view's own drawable textures need to be resident too.
 	[queue addResidencySet:mtkView.residencySet];
 
+	id<MTLLibrary> library = [device newDefaultLibraryWithBundle:[NSBundle bundleForClass:[HSRendererBundleAnchor class]] error:&error];
+	if (!library)
+	{
+		NSLog(@"HSRenderer: failed to load Metal library: %@", error);
+		return false;
+	}
+
+	id<MTL4Compiler> compiler = [device newCompilerWithDescriptor:[MTL4CompilerDescriptor new] error:&error];
+	if (!compiler)
+	{
+		NSLog(@"HSRenderer: failed to create MTL4Compiler: %@", error);
+		return false;
+	}
+
+	auto makePipeline = [&](NSString *fragmentFunctionName, MTLPixelFormat colorFormat) -> id<MTLRenderPipelineState>
+	{
+		MTL4LibraryFunctionDescriptor *vertexFn = [MTL4LibraryFunctionDescriptor new];
+		vertexFn.library = library;
+		vertexFn.name = @"hsVertexMain";
+
+		MTL4LibraryFunctionDescriptor *fragmentFn = [MTL4LibraryFunctionDescriptor new];
+		fragmentFn.library = library;
+		fragmentFn.name = fragmentFunctionName;
+
+		MTL4RenderPipelineDescriptor *desc = [MTL4RenderPipelineDescriptor new];
+		desc.vertexFunctionDescriptor = vertexFn;
+		desc.fragmentFunctionDescriptor = fragmentFn;
+		desc.colorAttachments[0].pixelFormat = colorFormat;
+		desc.colorAttachments[0].blendingState = MTL4BlendStateEnabled;
+		desc.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+		desc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+		desc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+		desc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorSourceAlpha;
+		desc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOne;
+		desc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOne;
+
+		NSError *pipelineError = nil;
+		id<MTLRenderPipelineState> pso = [compiler newRenderPipelineStateWithDescriptor:desc
+																	compilerTaskOptions:nil
+																				   error:&pipelineError];
+		if (!pso)
+			NSLog(@"HSRenderer: failed to build pipeline for %@: %@", fragmentFunctionName, pipelineError);
+		return pso;
+	};
+
+	id<MTLRenderPipelineState> spritePSO = makePipeline(@"hsSpriteFragment", MTLPixelFormatBGRA8Unorm);
+	id<MTLRenderPipelineState> tunnelPSO = makePipeline(@"hsTunnelFragment", MTLPixelFormatBGRA8Unorm);
+	id<MTLRenderPipelineState> gooPSO = makePipeline(@"hsGooFragment", MTLPixelFormatBGRA8Unorm);
+	id<MTLRenderPipelineState> causticPSO = makePipeline(@"hsCausticFragment", MTLPixelFormatRGBA8Unorm);
+	if (!spritePSO || !tunnelPSO || !gooPSO || !causticPSO)
+		return false;
+
+	MTLSamplerDescriptor *samplerDesc = [MTLSamplerDescriptor new];
+	samplerDesc.minFilter = MTLSamplerMinMagFilterLinear;
+	samplerDesc.magFilter = MTLSamplerMinMagFilterLinear;
+	samplerDesc.mipFilter = MTLSamplerMipFilterLinear;
+	samplerDesc.sAddressMode = MTLSamplerAddressModeClampToEdge;
+	samplerDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
+	samplerDesc.rAddressMode = MTLSamplerAddressModeClampToEdge;
+	id<MTLSamplerState> sampler = [device newSamplerStateWithDescriptor:samplerDesc];
+
+	MTL4ArgumentTableDescriptor *argTableDesc = [MTL4ArgumentTableDescriptor new];
+	argTableDesc.maxBufferBindCount = 2;
+	argTableDesc.maxTextureBindCount = 3;
+	argTableDesc.maxSamplerStateBindCount = 1;
+	id<MTL4ArgumentTable> argTable = [device newArgumentTableWithDescriptor:argTableDesc error:&error];
+	if (!argTable)
+	{
+		NSLog(@"HSRenderer: failed to create argument table: %@", error);
+		return false;
+	}
+	[argTable setSamplerState:sampler.gpuResourceID atIndex:0];
+
+	id<MTLBuffer> vertexBuffer = [device newBufferWithLength:kVertexBufferCapacity options:MTLResourceStorageModeShared];
+	vertexBuffer.label = @"HSRenderer vertex ring";
+	id<MTLBuffer> fogBuffer = [device newBufferWithLength:32 options:MTLResourceStorageModeShared];
+	fogBuffer.label = @"HSRenderer fog uniforms";
+	[residencySet addAllocation:vertexBuffer];
+	[residencySet addAllocation:fogBuffer];
+	[residencySet commit];
+
+	impl->library = library;
+	impl->compiler = compiler;
+	impl->spritePSO = spritePSO;
+	impl->tunnelPSO = tunnelPSO;
+	impl->gooPSO = gooPSO;
+	impl->causticPSO = causticPSO;
+	impl->sampler = sampler;
+	impl->argTable = argTable;
+	impl->vertexBuffer = vertexBuffer;
+	impl->fogBuffer = fogBuffer;
+
 	return true;
 }
 
 void HSRenderer::beginFrame()
 {
-	dispatch_semaphore_wait(impl->frameSemaphore, DISPATCH_TIME_FOREVER);
+	// Wait for the GPU to actually finish the previous frame (not just for commit() to
+	// return) before reclaiming the single allocator's memory for this frame's commands.
+	impl->frameNumber++;
+	[impl->frameEvent waitUntilSignaledValue:impl->frameNumber - 1 timeoutMS:1000];
 	[impl->allocator reset];
 
 	MTKView *view = impl->view;
@@ -173,7 +318,7 @@ void HSRenderer::beginFrame()
 	impl->drawable = view.currentDrawable;
 	if (!passDescriptor || !impl->drawable)
 	{
-		dispatch_semaphore_signal(impl->frameSemaphore);
+		impl->frameEvent.signaledValue = impl->frameNumber;	// no GPU work this frame; keep the bookkeeping consistent
 		impl->commandBuffer = nil;
 		impl->encoder = nil;
 		return;
@@ -188,6 +333,12 @@ void HSRenderer::beginFrame()
 
 	impl->commandBuffer = commandBuffer;
 	impl->encoder = [commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
+	// GL's default front face is CCW; Metal's default is CW. Match GL so "cull back face"
+	// (used for the starfield and the tunnel) culls the same triangles it always did.
+	[impl->encoder setFrontFacingWinding:MTLWindingCounterClockwise];
+	[impl->encoder setCullMode:MTLCullModeNone];
+	impl->currentCullMode = HS_CULL_NONE;
+	impl->vertexBufferOffset = 0;
 }
 
 void HSRenderer::endFrame()
@@ -200,20 +351,16 @@ void HSRenderer::endFrame()
 
 	id<CAMetalDrawable> drawable = impl->drawable;
 	id<MTL4CommandBuffer> commandBuffer = impl->commandBuffer;
-	dispatch_semaphore_t semaphore = impl->frameSemaphore;
 
 	[impl->queue waitForDrawable:drawable];
-	__block id<MTL4CommandBuffer> retainedBuffer = commandBuffer;	// keep alive until the completion handler fires
+	__block id<MTL4CommandBuffer> retainedBuffer = commandBuffer;	// keep alive until the GPU actually runs it
 	[impl->queue commit:&retainedBuffer count:1];
 	[impl->queue signalDrawable:drawable];
 	[drawable present];
-
-	// MTL4CommandBuffer has no addCompletedHandler; a drawable-presented handler on the
-	// view's layer would work too, but since we're single-buffered it's simplest to just
-	// signal once the queue has accepted the commit (commit: is synchronous enqueue; the
-	// GPU work itself still runs async, but waitForDrawable on the *next* beginFrame call
-	// naturally serializes us behind presentation, which is what single-buffering needs).
-	dispatch_semaphore_signal(semaphore);
+	// Signaled once the GPU finishes this frame's passes, not merely once commit() returns
+	// (commit is an async CPU-side enqueue) — the next beginFrame waits on this before it
+	// resets the allocator these commands were recorded into.
+	[impl->queue signalEvent:impl->frameEvent value:impl->frameNumber];
 
 	impl->encoder = nil;
 	impl->commandBuffer = nil;
@@ -222,7 +369,17 @@ void HSRenderer::endFrame()
 
 // --- Everything below is wired up in later phases; stub for now. ---
 
-void HSRenderer::setFog(float start, float end, bool enabled) {}
+// Matches HSFogUniforms in Shaders.metal: float4 color; float scale; float end; bool enabled;
+void HSRenderer::setFog(float start, float end, bool enabled)
+{
+	struct { float color[4]; float scale; float end; uint32_t enabled; uint32_t pad; } uniforms;
+	uniforms.color[0] = uniforms.color[1] = uniforms.color[2] = 0.0f;	// fog is always black in this engine
+	uniforms.color[3] = 1.0f;
+	uniforms.scale = (end != start) ? 1.0f / (end - start) : 0.0f;
+	uniforms.end = end;
+	uniforms.enabled = enabled ? 1 : 0;
+	std::memcpy(impl->fogBuffer.contents, &uniforms, sizeof(uniforms));
+}
 
 void HSRenderer::setProjectionMatrix(const double projMat[16])
 {
@@ -351,20 +508,157 @@ void HSRenderer::getCurrentMatrix(float out[16]) const
 		out[i] = float(impl->modelStack[impl->stackTop][i]);
 }
 
-void HSRenderer::setPipeline(HSPipeline pipeline) {}
-void HSRenderer::setCullMode(HSCullMode mode) {}
-void HSRenderer::bindTexture(int unit, HSTextureRef texture) {}
-void HSRenderer::begin(HSPrimitive primitive) {}
-void HSRenderer::color4f(float r, float g, float b, float a) {}
-void HSRenderer::texCoord2f(float s, float t) {}
-void HSRenderer::normal3fv(const float n[3]) {}
-void HSRenderer::vertex3f(float x, float y, float z) {}
-void HSRenderer::vertex3fv(const float v[3]) {}
-void HSRenderer::end() {}
+void HSRenderer::setPipeline(HSPipeline pipeline)
+{
+	impl->currentPipeline = pipeline;
+}
+
+void HSRenderer::setCullMode(HSCullMode mode)
+{
+	impl->currentCullMode = mode;
+	if (impl->encoder)
+		[impl->encoder setCullMode:(mode == HS_CULL_BACK) ? MTLCullModeBack : MTLCullModeNone];
+}
+
+void HSRenderer::bindTexture(int unit, HSTextureRef texture)
+{
+	if (unit >= 0 && unit < 3)
+		impl->boundTextures[unit] = texture;
+}
+
+void HSRenderer::begin(HSPrimitive primitive)
+{
+	impl->vertexAccumulator.clear();
+}
+
+void HSRenderer::color4f(float r, float g, float b, float a)
+{
+	impl->currentColor[0] = r;
+	impl->currentColor[1] = g;
+	impl->currentColor[2] = b;
+	impl->currentColor[3] = a;
+}
+
+void HSRenderer::texCoord2f(float s, float t)
+{
+	impl->currentAttrib3[0] = s;
+	impl->currentAttrib3[1] = t;
+	impl->currentAttrib3[2] = 0.0f;
+}
+
+void HSRenderer::normal3fv(const float n[3])
+{
+	impl->currentAttrib3[0] = n[0];
+	impl->currentAttrib3[1] = n[1];
+	impl->currentAttrib3[2] = n[2];
+}
+
+void HSRenderer::vertex3f(float x, float y, float z)
+{
+	double local[4] = {double(x), double(y), double(z), 1.0};
+	double eye[4], clip[4];
+	hsMatVecMul(impl->modelStack[impl->stackTop], local, eye);
+	hsMatVecMul(impl->projectionMatrix, eye, clip);
+
+	float *v = nullptr;
+	size_t base = impl->vertexAccumulator.size();
+	impl->vertexAccumulator.resize(base + 14);
+	v = &impl->vertexAccumulator[base];
+	v[0] = float(clip[0]); v[1] = float(clip[1]); v[2] = float(clip[2]); v[3] = float(clip[3]);
+	v[4] = float(eye[0]); v[5] = float(eye[1]); v[6] = float(eye[2]);
+	v[7] = impl->currentAttrib3[0]; v[8] = impl->currentAttrib3[1]; v[9] = impl->currentAttrib3[2];
+	v[10] = impl->currentColor[0]; v[11] = impl->currentColor[1]; v[12] = impl->currentColor[2]; v[13] = impl->currentColor[3];
+}
+
+void HSRenderer::vertex3fv(const float v[3])
+{
+	vertex3f(v[0], v[1], v[2]);
+}
+
+void HSRenderer::end()
+{
+	size_t vertexCount = impl->vertexAccumulator.size() / 14;
+	if (vertexCount < 3 || !impl->encoder)
+		return;
+
+	size_t byteSize = impl->vertexAccumulator.size() * sizeof(float);
+	if (impl->vertexBufferOffset + byteSize > kVertexBufferCapacity)
+		return;	// out of ring space for this frame; drop the draw rather than corrupt memory
+
+	uint8_t *dest = static_cast<uint8_t *>(impl->vertexBuffer.contents) + impl->vertexBufferOffset;
+	std::memcpy(dest, impl->vertexAccumulator.data(), byteSize);
+
+	id<MTLRenderPipelineState> pso = nil;
+	switch (impl->currentPipeline)
+	{
+		case HS_PIPELINE_SPRITE:  pso = impl->spritePSO; break;
+		case HS_PIPELINE_TUNNEL:  pso = impl->tunnelPSO; break;
+		case HS_PIPELINE_GOO:     pso = impl->gooPSO; break;
+		case HS_PIPELINE_CAUSTIC: pso = impl->causticPSO; break;
+	}
+
+	[impl->argTable setAddress:(impl->vertexBuffer.gpuAddress + impl->vertexBufferOffset) atIndex:0];
+	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
+	for (int unit = 0; unit < 3; ++unit)
+	{
+		auto it = impl->textures.find(impl->boundTextures[unit]);
+		id<MTLTexture> tex = (it != impl->textures.end()) ? it->second : nil;
+		if (tex)
+			[impl->argTable setTexture:tex.gpuResourceID atIndex:unit];
+	}
+
+	[impl->encoder setRenderPipelineState:pso];
+	[impl->encoder setArgumentTable:impl->argTable atStages:MTLRenderStageVertex | MTLRenderStageFragment];
+	[impl->encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:vertexCount];
+
+	impl->vertexBufferOffset += byteSize;
+	impl->vertexAccumulator.clear();
+}
+
 void HSRenderer::drawIndexedMesh(const float *interleavedNormalPosition, uint32_t vertexCount,
 								  const uint32_t *indices, uint32_t indexCount) {}
-HSTextureRef HSRenderer::createTexture2D(int width, int height, const uint8_t *rgba8, bool mipmapped) { return HS_INVALID_TEXTURE; }
+
+HSTextureRef HSRenderer::createTexture2D(int width, int height, const uint8_t *rgba8, bool mipmapped)
+{
+	MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+																					 width:width
+																					height:height
+																				 mipmapped:mipmapped];
+	desc.usage = MTLTextureUsageShaderRead;
+	id<MTLTexture> texture = [impl->device newTextureWithDescriptor:desc];
+	if (!texture)
+		return HS_INVALID_TEXTURE;
+
+	[texture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 withBytes:rgba8 bytesPerRow:width * 4];
+
+	if (mipmapped)
+	{
+		id<MTL4CommandBuffer> cmdBuffer = [impl->device newCommandBuffer];
+		[cmdBuffer beginCommandBufferWithAllocator:impl->allocator];
+		id<MTL4ComputeCommandEncoder> blit = [cmdBuffer computeCommandEncoder];
+		[blit generateMipmapsForTexture:texture];
+		[blit endEncoding];
+		[cmdBuffer endCommandBuffer];
+		id<MTL4CommandBuffer> buffers[1] = {cmdBuffer};
+		[impl->queue commit:buffers count:1];
+		// No CPU wait needed: subsequent frame-rendering command buffers go on this same
+		// queue, so Metal guarantees this mipmap generation finishes first on the GPU.
+	}
+
+	[impl->residencySet addAllocation:texture];
+	[impl->residencySet commit];
+
+	HSTextureRef ref = impl->nextTextureRef++;
+	impl->textures[ref] = texture;
+	return ref;
+}
+
 HSTextureRef HSRenderer::createTextureCube(int size, const uint8_t *facesRGBA8[6], bool mipmapped) { return HS_INVALID_TEXTURE; }
-void HSRenderer::destroyTexture(HSTextureRef texture) {}
+
+void HSRenderer::destroyTexture(HSTextureRef texture)
+{
+	impl->textures.erase(texture);
+}
+
 void HSRenderer::beginCausticFrame(int size) {}
 HSTextureRef HSRenderer::endCausticFrame() { return HS_INVALID_TEXTURE; }

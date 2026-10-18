@@ -16,14 +16,6 @@
 #include <metal_stdlib>
 using namespace metal;
 
-struct HSVertexIn
-{
-	float4 clipPosition	[[attribute(0)]];	// precomputed projection * modelview * local, CPU-side
-	float3 eyePosition		[[attribute(1)]];	// modelview * local, for fog and goo's reflection vector
-	float3 attrib3			[[attribute(2)]];	// texcoord.xy (sprite/tunnel) or object-space normal (goo)
-	float4 color			[[attribute(3)]];	// rgb + alpha (alpha doubles as the animation-frame lerp)
-};
-
 struct HSVaryings
 {
 	float4 position [[position]];
@@ -37,16 +29,23 @@ struct HSFogUniforms
 	float4 color;
 	float scale;	// 1 / (end - start)
 	float end;
-	bool enabled;
+	int enabled;	// int, not bool: guarantees the same 4-byte layout the CPU side writes
 };
 
-vertex HSVaryings hsVertexMain(HSVertexIn in [[stage_in]])
+// Manual vertex fetch, not [[stage_in]]: Metal 4's argument-table buffer bindings are
+// plain GPU addresses, not the fixed-function attribute-fetch descriptors that stage_in
+// relies on, so every Metal 4 sample indexes raw buffers by vertex_id instead. The CPU
+// side packs 14 tightly-interleaved floats per vertex (56 bytes, no padding); reading
+// raw floats here avoids MSL's struct-alignment rules (float3 aligns to 16 in a struct)
+// silently shifting every offset out from under the CPU packing.
+vertex HSVaryings hsVertexMain(device const float *vertexData [[buffer(0)]], uint vertexID [[vertex_id]])
 {
+	uint base = vertexID * 14;
 	HSVaryings out;
-	out.position = in.clipPosition;
-	out.eyePosition = in.eyePosition;
-	out.attrib3 = in.attrib3;
-	out.color = in.color;
+	out.position = float4(vertexData[base + 0], vertexData[base + 1], vertexData[base + 2], vertexData[base + 3]);
+	out.eyePosition = float3(vertexData[base + 4], vertexData[base + 5], vertexData[base + 6]);
+	out.attrib3 = float3(vertexData[base + 7], vertexData[base + 8], vertexData[base + 9]);
+	out.color = float4(vertexData[base + 10], vertexData[base + 11], vertexData[base + 12], vertexData[base + 13]);
 	return out;
 }
 

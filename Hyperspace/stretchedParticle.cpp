@@ -19,22 +19,9 @@
  */
 
 
-#ifdef WIN32
-	#include <windows.h>
-#endif
 #include <Hyperspace/stretchedParticle.h>
 #include <stdio.h>
 #include <math.h>
-#include <OpenGL/gl.h>
-#include <OpenGL/glu.h>
-
-
-
-//extern float billboardMat[16];
-/*extern float unroll;
-extern double modelMat[16];
-extern double projMat[16];
-extern GLint viewport[4];*/
 
 
 
@@ -42,15 +29,17 @@ stretchedParticle::stretchedParticle(){
 	pos[0] = pos[1] = pos[2] = 0.0f;
 	lastPos[0] = lastPos[1] = lastPos[2] = 0.0f;
 	drawPos[0] = drawPos[1] = drawPos[2] = 0.0f;
-	
+	screenPos[0] = screenPos[1] = 0.0;
+	lastScreenPos[0] = lastScreenPos[1] = 0.0;
+
 	radius = 0.03f;
 	color[0] = color[1] = color[2] = 1.0f;
 }
 
 
-void stretchedParticle::draw(float* eyepoint, float unroll, double *modelMat, double *projMat, GLint *viewport){
+void stretchedParticle::draw(float* eyepoint, float unroll, double *modelMat, double *projMat, const int *viewport, HSRenderer *renderer){
 	static double winx, winy, winz;
-	gluProject(pos[0], pos[1], pos[2],
+	HSRenderer::project(pos[0], pos[1], pos[2],
 		modelMat, projMat, viewport,
 		&winx, &winy, &winz);
 	if(winz > 0.0f){
@@ -92,40 +81,40 @@ void stretchedParticle::draw(float* eyepoint, float unroll, double *modelMat, do
 		stretch = 1.0f;
 	if(stretch > 0.5f / radius)
 		stretch = 0.5f / radius;
-	glPushMatrix();
-		glTranslatef(drawPos[0], drawPos[1], drawPos[2]);
-		glMultMatrixf(bbMat);
-		glRotatef(57.2957795131f * atan2f(sd[1], sd[0]) + unroll, 0, 0, 1);
-		glScalef(stretch, 1.0f, 1.0f);
+	renderer->matrixPush();
+		renderer->translate(drawPos[0], drawPos[1], drawPos[2]);
+		renderer->multMatrixf(bbMat);
+		renderer->rotate(57.2957795131f * atan2f(sd[1], sd[0]) + unroll, 0, 0, 1);
+		renderer->scale(stretch, 1.0f, 1.0f);
 		float darkener = stretch * 0.3f;
 		if(darkener < 1.0f)
 			darkener = 1.0f;
 		// draw colored aura
-		glColor3f(color[0] / darkener, color[1] / darkener, color[2] / darkener);
-		glBegin(GL_TRIANGLE_STRIP);
-			glTexCoord2f(0.0f, 0.0f);
-			glVertex3f(-radius, -radius, 0.0f);
-			glTexCoord2f(1.0f, 0.0f);
-			glVertex3f(radius, -radius, 0.0f);
-			glTexCoord2f(0.0f, 1.0f);
-			glVertex3f(-radius, radius, 0.0f);
-			glTexCoord2f(1.0f, 1.0f);
-			glVertex3f(radius, radius, 0.0f);
-		glEnd();
+		renderer->color4f(color[0] / darkener, color[1] / darkener, color[2] / darkener, 1.0f);
+		renderer->begin(HS_TRIANGLE_STRIP);
+			renderer->texCoord2f(0.0f, 0.0f);
+			renderer->vertex3f(-radius, -radius, 0.0f);
+			renderer->texCoord2f(1.0f, 0.0f);
+			renderer->vertex3f(radius, -radius, 0.0f);
+			renderer->texCoord2f(0.0f, 1.0f);
+			renderer->vertex3f(-radius, radius, 0.0f);
+			renderer->texCoord2f(1.0f, 1.0f);
+			renderer->vertex3f(radius, radius, 0.0f);
+		renderer->end();
 		// draw white center
-		glColor3f(1.0f / darkener, 1.0f / darkener, 1.0f / darkener);
-		glBegin(GL_TRIANGLE_STRIP);
-			glTexCoord2f(0.0f, 0.0f);
-			glVertex3f(-radius*0.3f, -radius*0.3f, 0.0f);
-			glTexCoord2f(1.0f, 0.0f);
-			glVertex3f(radius*0.3f, -radius*0.3f, 0.0f);
-			glTexCoord2f(0.0f, 1.0f);
-			glVertex3f(-radius*0.3f, radius*0.3f, 0.0f);
-			glTexCoord2f(1.0f, 1.0f);
-			glVertex3f(radius*0.3f, radius*0.3f, 0.0f);
-		glEnd();
-	glPopMatrix();
-	
+		renderer->color4f(1.0f / darkener, 1.0f / darkener, 1.0f / darkener, 1.0f);
+		renderer->begin(HS_TRIANGLE_STRIP);
+			renderer->texCoord2f(0.0f, 0.0f);
+			renderer->vertex3f(-radius*0.3f, -radius*0.3f, 0.0f);
+			renderer->texCoord2f(1.0f, 0.0f);
+			renderer->vertex3f(radius*0.3f, -radius*0.3f, 0.0f);
+			renderer->texCoord2f(0.0f, 1.0f);
+			renderer->vertex3f(-radius*0.3f, radius*0.3f, 0.0f);
+			renderer->texCoord2f(1.0f, 1.0f);
+			renderer->vertex3f(radius*0.3f, radius*0.3f, 0.0f);
+		renderer->end();
+	renderer->matrixPop();
+
 	lastScreenPos[0] = screenPos[0];
 	lastScreenPos[1] = screenPos[1];
 }

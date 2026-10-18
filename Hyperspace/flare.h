@@ -23,23 +23,12 @@
 #define FLARE_H
 
 
-
-#ifdef WIN32
-	#include <windows.h>
-#endif
-#include <OpenGL/gl.h>
-#include <OpenGL/glu.h>
 #include <rsMath/rsMath.h>
 
 #include "Hyperspace.h"
 
-// Externed so flares can be drawn elsewhere
-/*extern unsigned int flarelist[4];
-extern GLuint flaretex[4];*/
-
 
 // Generate textures for lens flares
-// then applies textures to geometry in display lists
 void initFlares(HyperspaceSaverSettings *inSettings);
 
 
@@ -49,9 +38,7 @@ void initFlares(HyperspaceSaverSettings *inSettings);
 void flare(float *pos, float red, float green, float blue, float alpha, HyperspaceSaverSettings *inSettings);
 
 
-#ifndef WIN32
 inline const float max(const float& a, const float& b){ return (a > b) ? a : b; }
-#endif
 
 
 #endif  // FLARE_H

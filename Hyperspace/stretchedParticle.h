@@ -23,6 +23,7 @@
 #define STRETCHED_PARTICLE_H
 
 #include "Hyperspace.h"
+#include "HSRenderer.h"
 
 
 class stretchedParticle{
@@ -41,7 +42,7 @@ public:
 	stretchedParticle();
 	~stretchedParticle(){};
 	//void update();
-	void draw(float* eyepoint, float unroll, double *modelMat, double *projMat, GLint *viewport);
+	void draw(float* eyepoint, float unroll, double *modelMat, double *projMat, const int *viewport, HSRenderer *renderer);
 };
 
 
