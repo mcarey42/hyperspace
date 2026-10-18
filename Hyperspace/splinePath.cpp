@@ -65,7 +65,21 @@ splinePath::splinePath(int length){
 
 
 splinePath::~splinePath(){
+	// Everything the constructor allocated; the original freed only the outer xyz array.
+	for(int i=0; i<numPoints; i++){
+		delete[] movevec[i];
+		delete[] basexyz[i];
+		delete[] xyz[i];
+		delete[] basedir[i];
+		delete[] dir[i];
+	}
+	delete[] phase;
+	delete[] rate;
+	delete[] movevec;
+	delete[] basexyz;
 	delete[] xyz;
+	delete[] basedir;
+	delete[] dir;
 }
 
 

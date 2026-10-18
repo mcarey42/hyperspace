@@ -215,6 +215,17 @@ public:
 
 	// Texture storage.
 	std::map<HSTextureRef, id<MTLTexture>> textures;
+	// MTL4 command buffers don't retain the resources they use, so a texture destroyed by
+	// cleanUp() (stopAnimation) may still be sampled by up to kMaxFramesInFlight frames, or by
+	// setup work, already committed. destroyTexture() parks it here with the frame and setup
+	// values it must outlive; hsReleaseRetiredResources() drops it (and its residency) after.
+	struct RetiredTexture
+	{
+		id<MTLTexture> texture;
+		uint64_t afterFrame;
+		uint64_t afterSetup;
+	};
+	std::vector<RetiredTexture> retiredTextures;
 	HSTextureRef nextTextureRef = 1;
 
 	// One-off offscreen caustic-texture generation (see beginCausticFrame/endCausticFrame).
@@ -435,6 +446,15 @@ HSFrameStats HSRenderer::frameStats() const
 
 HSRenderer::~HSRenderer()
 {
+	// Nothing below may be freed while the GPU can still touch it (MTL4 doesn't retain
+	// resources for committed work). Normally this is at most a couple of frames' wait, and
+	// teardown is off the startup path that can't tolerate CPU blocking.
+	if (impl->frameEvent && impl->frameNumber > 0)
+		[impl->frameEvent waitUntilSignaledValue:impl->frameNumber timeoutMS:500];
+	if (impl->setupEvent && impl->setupEventValue > 0)
+		[impl->setupEvent waitUntilSignaledValue:impl->setupEventValue timeoutMS:500];
+	if (impl->queue && impl->residencySet)
+		[impl->queue removeResidencySet:impl->residencySet];
 	delete impl;
 }
 
@@ -628,14 +648,37 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 // GPU has signaled past the last setup submission, nothing can still be reading any of them,
 // so drop them (~16MB each) rather than keeping them for the lifetime of the renderer.
 // Non-blocking: just a signaledValue check, cheap enough to run every frame.
-static void hsReleaseIdleSetupBuffers(HSRendererImpl *impl)
+// Same goes for the throwaway setup allocators (initSaver() creates a few dozen per run, and
+// they hold their recorded command memory), and for textures parked by destroyTexture().
+static void hsReleaseRetiredResources(HSRendererImpl *impl)
 {
-	if (impl->setupVertexBuffers.empty() || impl->setupEvent.signaledValue < impl->setupEventValue)
-		return;
-	for (const auto &entry : impl->setupVertexBuffers)
-		[impl->residencySet removeAllocation:entry.buffer];
-	[impl->residencySet commit];
-	impl->setupVertexBuffers.clear();
+	bool changedResidency = false;
+	uint64_t setupDone = impl->setupEvent.signaledValue;
+	if (setupDone >= impl->setupEventValue)
+	{
+		for (const auto &entry : impl->setupVertexBuffers)
+			[impl->residencySet removeAllocation:entry.buffer];
+		changedResidency = changedResidency || !impl->setupVertexBuffers.empty();
+		impl->setupVertexBuffers.clear();
+		impl->setupAllocators.clear();
+	}
+
+	uint64_t framesDone = impl->frameEvent.signaledValue;
+	auto &retired = impl->retiredTextures;
+	for (auto it = retired.begin(); it != retired.end();)
+	{
+		if (framesDone >= it->afterFrame && setupDone >= it->afterSetup)
+		{
+			[impl->residencySet removeAllocation:it->texture];
+			changedResidency = true;
+			it = retired.erase(it);
+		}
+		else
+			++it;
+	}
+
+	if (changedResidency)
+		[impl->residencySet commit];
 }
 
 bool HSRenderer::beginFrame()
@@ -694,7 +737,7 @@ bool HSRenderer::beginFrame()
 		}
 	}
 	[allocator reset];
-	hsReleaseIdleSetupBuffers(impl);
+	hsReleaseRetiredResources(impl);
 
 	// attachToView ran while the view was still 0x0 (before AppKit/SwiftUI ever gave it a
 	// real size), so the residency set it registered for the view's drawables then may not
@@ -1241,7 +1284,13 @@ HSTextureRef HSRenderer::createTextureCube(int size, const uint8_t *facesRGBA8[6
 
 void HSRenderer::destroyTexture(HSTextureRef texture)
 {
-	impl->textures.erase(texture);
+	auto it = impl->textures.find(texture);
+	if (it == impl->textures.end())
+		return;
+	// frameNumber is the last frame that may have sampled it (committed, or still being
+	// recorded if we're mid-frame and endFrame() will commit it as that number).
+	impl->retiredTextures.push_back({it->second, impl->frameNumber, impl->setupEventValue});
+	impl->textures.erase(it);
 }
 
 // Renders directly into a mipmapped offscreen texture instead of the original's approach

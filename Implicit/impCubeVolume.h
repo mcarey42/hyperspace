@@ -97,6 +97,7 @@ private:
 	bool crawlfromsides;
 	float surfacevalue;  // surface's position on gradient
 	impSurface* surface;
+	impSurface* ownedSurface;	// the default surface allocated here; setSurface() may replace "surface"
 
 public:
 	impCubeVolume();

@@ -67,6 +67,12 @@ goo::goo(int res, float rad){
 
 
 goo::~goo(){
+	for(int i=0; i<arraySize; i++){
+		for(int j=0; j<arraySize; j++)
+			delete surface[i][j];
+		delete[] surface[i];
+		delete[] useSurface[i];
+	}
 	delete[] surface;
 	delete[] useSurface;
 	delete volume;

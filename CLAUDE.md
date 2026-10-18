@@ -53,6 +53,11 @@ preferred not to block on that). It is a standing manual step.
   matched pair completing. `waitUntilSignaledValue:timeoutMS:` can pump the run loop while
   blocking, which on the main thread can let AppKit redeliver a UI event that re-enters the draw
   call before the outer one returns.
+- **MTL4 command buffers don't retain resources.** Anything a committed frame or setup pass uses
+  (textures, buffers) must outlive the GPU work. `destroyTexture` parks textures until
+  `frameEvent`/`setupEvent` pass the values they were last used at, and `~HSRenderer` waits for
+  in-flight work before freeing. Per-frame CPU-written data (vertex/index rings, fog uniforms)
+  lives in one buffer per frame-in-flight slot.
 
 ## legacyScreenSaver hosting gotchas
 
@@ -74,7 +79,18 @@ preferred not to block on that). It is a standing manual step.
   `log stream --level debug --predicate 'subsystem == "com.reallyslick.Hyperspace"'`.
   Frame, `initSaver` and animating intervals are signposts, so they show up in Instruments'
   Points of Interest track. GPU-side errors are logged from `MTL4CommitOptions` feedback handlers.
+- **Detached views are never stopped or freed by the host.** legacyScreenSaver removes a view from
+  its window when the preview changes or the saver ends, but never calls `stopAnimation`, and
+  ScreenSaverView's animation timer keeps the view alive. Each instance used to hold ~220MB for
+  the life of the process. `viewDidMoveToWindow` with a nil window now stops animation and
+  releases the scene, MTKView and renderer, after which the view deallocates. Measure with
+  `footprint <pid>` across repeated reselects; it should stay flat.
 - To make the host reload a reinstalled bundle: `killall legacyScreenSaver`.
+- Leak-check the C++ engine with HyperspaceHost: launch its binary with `MallocStackLogging=1`,
+  use Hyperspace → Configure… → Close a few times (a full stop/cleanUp/initSaver cycle), then
+  run `leaks <pid>`. It should report 0 leaks. Several upstream classes (tunnel, causticTextures,
+  splinePath, goo) used to free only the outer level of their nested arrays.
+- Some upstream sources (e.g. `splinePath.cpp`) use CRLF line endings. Preserve them when editing.
 
 ## Workflow
 

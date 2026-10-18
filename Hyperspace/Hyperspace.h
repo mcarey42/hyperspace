@@ -30,6 +30,11 @@ struct HyperspaceSaverSettings
 	float frameTime;
 	bool doingPreview;
 	bool readyToDraw;
+	// What initSaver() actually built. The configure sheet edits dStars/dUseTunnels/dUseGoo
+	// before the stop/start that applies them, so cleanUp() must free what exists, not what
+	// the settings say now (deleting stars[2000..2999] of a 2000-star array, say).
+	int builtStars;
+	bool builtTunnels, builtGoo;
 	int xsize, ysize;
 	float aspectRatio;
 	bool first;

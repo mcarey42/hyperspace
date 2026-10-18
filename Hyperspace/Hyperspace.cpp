@@ -109,7 +109,7 @@ void draw(HyperspaceSaverSettings *inSettings){
 	inSettings->renderer->getCurrentMatrix(inSettings->modelMat);
 	inSettings->unroll = camRoll[0] * RS_RAD2DEG;
 
-	if(inSettings->dUseGoo){
+	if(inSettings->builtGoo){
 		// calculate diagonal fov
 		float diagFov = 0.5f * float(inSettings->dFov) / RS_RAD2DEG;
 		diagFov = tanf(diagFov);
@@ -123,7 +123,7 @@ void draw(HyperspaceSaverSettings *inSettings){
 	inSettings->renderer->setCullMode(HS_CULL_BACK);
 	inSettings->renderer->bindTexture(0, inSettings->flaretex[0]);
 	static float temppos[2];
-	for(int i=0; i<inSettings->dStars; i++){
+	for(int i=0; i<inSettings->builtStars; i++){
 		temppos[0] = inSettings->stars[i]->pos[0] - inSettings->camPos[0];
 		temppos[1] = inSettings->stars[i]->pos[2] - inSettings->camPos[2];
 		if(temppos[0] > inSettings->depth){
@@ -162,7 +162,7 @@ void draw(HyperspaceSaverSettings *inSettings){
 	const float lerp = textureTime / texFrameTime;
 
 	// draw goo
-	if(inSettings->dUseGoo){
+	if(inSettings->builtGoo){
 		static float goo_rgb_phase[3] = {-0.1f, -0.1f, -0.1f};
 		static float goo_rgb_speed[3] = {rsRandf(0.02f) + 0.02f, rsRandf(0.02f) + 0.02f, rsRandf(0.02f) + 0.02f};
 		float goo_rgb[4];
@@ -196,7 +196,7 @@ void draw(HyperspaceSaverSettings *inSettings){
 	inSettings->theStarBurst->draw(lerp, inSettings);
 
 	// draw tunnel
-	if(inSettings->dUseTunnels){
+	if(inSettings->builtTunnels){
 		inSettings->theTunnel->make(inSettings->frameTime);
 		inSettings->renderer->setPipeline(HS_PIPELINE_TUNNEL);
 		inSettings->renderer->setCullMode(HS_CULL_BACK);
@@ -344,6 +344,9 @@ void initSaver(HyperspaceSaverSettings *inSettings){
 	// sampling any of them. See HSRenderer::waitForSetupCompletion's header comment.
 	inSettings->renderer->waitForSetupCompletion();
 
+	inSettings->builtStars = inSettings->dStars;
+	inSettings->builtTunnels = inSettings->dUseTunnels;
+	inSettings->builtGoo = inSettings->dUseGoo;
 	inSettings->readyToDraw = 1;
 }
 
@@ -358,17 +361,17 @@ void cleanUp(HyperspaceSaverSettings *inSettings){
 		return;
 	inSettings->readyToDraw = 0;
 
-	for(int i=0; i<inSettings->dStars; i++)
+	for(int i=0; i<inSettings->builtStars; i++)
 		delete inSettings->stars[i];
 	delete [] inSettings->stars;
 	delete inSettings->sunStar;
 	for(int i=0; i<4; i++)
 		inSettings->renderer->destroyTexture(inSettings->flaretex[i]);
-	if(inSettings->dUseTunnels){
+	if(inSettings->builtTunnels){
 		delete inSettings->theTunnel;
 		delete inSettings->theCausticTextures;
 	}
-	if(inSettings->dUseGoo)
+	if(inSettings->builtGoo)
 		delete inSettings->theGoo;
 	delete inSettings->theStarBurst;
 	delete inSettings->theWNCM;

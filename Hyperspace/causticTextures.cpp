@@ -181,10 +181,24 @@ causticTextures::causticTextures(int keys, int frames, int res, int size, float 
 		caustictex[k] = renderer->endCausticFrame();
 	}
 
+	// Free the scratch geometry, inner arrays included (the original freed only the
+	// outermost level, leaking ~2MB every time initSaver() ran).
 	delete[] x;
+	for(k=0; k<numFrames; k++){
+		for(i=0; i<geoRes; i++)
+			delete[] y[k][i];
+		delete[] y[k];
+	}
 	delete[] y;
 	delete[] z;
+	for(i=0; i<=geoRes; i++){
+		for(j=0; j<=geoRes; j++)
+			delete[] xz[i][j];
+		delete[] xz[i];
+	}
 	delete[] xz;
+	for(i=0; i<=geoRes; i++)
+		delete[] intensity[i];
 	delete[] intensity;
 }
 

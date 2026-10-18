@@ -35,7 +35,7 @@ impCubeVolume::impCubeVolume(){
 			crawlDirections[i][j] = cubeTables.crawlDirections[i][j];
 	}
 
-	surface = new impSurface;
+	surface = ownedSurface = new impSurface;
 	init(4, 4, 4, 0.2f);
 	surfacevalue = 0.5f;
 
@@ -45,6 +45,7 @@ impCubeVolume::impCubeVolume(){
 
 
 impCubeVolume::~impCubeVolume(){
+	delete ownedSurface;
 	cubes.clear();
 	cubeIndices.clear();
 	sortableCubes.clear();

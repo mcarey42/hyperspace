@@ -43,8 +43,13 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 	uint64_t lDrawCalls, lLastDrawCalls;
 	BOOL lLoggedFirstPresent;
 	BOOL lLoggedFirstDrawRect;
+	// Whether this instance renders at all (Metal 4 available, and not excluded by
+	// "main screen only"). Separate from lView, which is released while detached.
+	BOOL lCanRender;
 }
 - (void)logStatsIfDue;
+- (BOOL)setUpRenderer;
+- (void)releaseRenderer;
 @end
 
 @interface HyperspaceView (Private)
@@ -86,30 +91,10 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 		lMainScreenOnly = [defaults boolForKey:@"MainScreenOnly"];
 		if (lMainScreen || !lMainScreenOnly)
 		{
-			// Use the frame this view was actually given, not NSZeroRect: some hosting
-			// contexts (e.g. the System Settings mini-preview, which goes through
-			// ViewBridge's remote-view geometry negotiation) may never deliver a later
-			// setFrameSize: call cleanly, so starting at zero size and waiting for a resize
-			// to arrive risks the Metal view staying 0x0 — and never getting a drawable —
-			// for the life of that instance.
-			MTKView *candidateView = [[MTKView alloc] initWithFrame:NSMakeRect(0, 0, frame.size.width, frame.size.height)];
-			candidateView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-			HSRenderer *renderer = new HSRenderer;
-
-			renderer->setLogTag(lInstanceID);
-			BOOL attached = renderer->attachToView(candidateView);
-			os_log(HSLog(), "#%u attachToView=%d mtkView drawableSize=%{public}@", lInstanceID, attached,
-				   NSStringFromSize(NSSizeFromCGSize(candidateView.drawableSize)));
-			if (attached)
+			if ([self setUpRenderer])
 			{
-				lView = candidateView;
-				lRenderer = renderer;
-				lView.delegate = self;
-				self.autoresizesSubviews = YES;
-				[self addSubview:lView];
-
+				lCanRender = YES;
 				lSettings.frameTime = 0;
-				lSettings.renderer = lRenderer;
 
 				setDefaults(&lSettings);
 				if ([defaults objectForKey:@"Speed"])
@@ -120,10 +105,6 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 				self.animationTimeInterval = 1.0/60.0;
 				lSettings.first = 1;
 			}
-			else
-			{
-				delete renderer;
-			}
 		}
 		else
 			os_log(HSLog(), "#%u no renderer: lMainScreen=%d lMainScreenOnly=%d", lInstanceID, lMainScreen, lMainScreenOnly);
@@ -132,11 +113,60 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 }
 
 
+// Creates the MTKView + renderer at this view's current size. Separate from init because a
+// view removed from its window releases them (see viewDidMoveToWindow) and rebuilds them if
+// it's ever re-added.
+- (BOOL)setUpRenderer
+{
+	// Use the size this view was actually given, not NSZeroRect: the host may never send a
+	// later setFrameSize:, and a 0x0 MTKView never gets a drawable.
+	NSSize size = self.bounds.size;
+	MTKView *candidateView = [[MTKView alloc] initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
+	candidateView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+	HSRenderer *renderer = new HSRenderer;
+
+	renderer->setLogTag(lInstanceID);
+	BOOL attached = renderer->attachToView(candidateView);
+	os_log(HSLog(), "#%u attachToView=%d mtkView drawableSize=%{public}@", lInstanceID, attached,
+		   NSStringFromSize(NSSizeFromCGSize(candidateView.drawableSize)));
+	if (!attached)
+	{
+		delete renderer;
+		return NO;
+	}
+
+	lView = candidateView;
+	lRenderer = renderer;
+	lView.delegate = self;
+	self.autoresizesSubviews = YES;
+	[self addSubview:lView];
+	lSettings.renderer = lRenderer;
+	// A new renderer has no projection yet; force syncViewportWithDrawable to reshape.
+	lSettings.xsize = lSettings.ysize = 0;
+	return YES;
+}
+
+
+// Frees the scene (if built), the MTKView with its full-screen drawables, and the renderer.
+- (void)releaseRenderer
+{
+	if (lSettings.readyToDraw)
+		cleanUp(&lSettings);	// needs the renderer to destroy its textures, so first
+	lView.delegate = nil;
+	[lView removeFromSuperview];
+	lView = nil;
+	delete lRenderer;	// waits for any in-flight GPU work before freeing
+	lRenderer = NULL;
+	lSettings.renderer = NULL;
+}
+
+
 - (void)dealloc
 {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
 	os_log(HSLog(), "#%u dealloc (animateCalls=%llu presented=%llu)", lInstanceID, lAnimateCalls,
 		   lRenderer ? lRenderer->frameStats().presented : 0);
+	[self releaseRenderer];
 }
 
 
@@ -201,6 +231,23 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 - (void)viewDidMoveToWindow
 {
 	[super viewDidMoveToWindow];
+
+	// legacyScreenSaver removes views from their window when the preview changes or the saver
+	// ends, but never calls stopAnimation and keeps the view alive: each such instance used to
+	// hold ~220MB (scene, textures, vertex rings, 4K drawables) for the life of the process,
+	// growing with every saver activation. Stop and release everything once detached.
+	if (!self.window)
+	{
+		os_log(HSLog(), "#%u detached from window: isAnimating=%d, releasing renderer", lInstanceID, self.isAnimating);
+		if (self.isAnimating)
+			[self stopAnimation];
+		[self releaseRenderer];
+		[[NSNotificationCenter defaultCenter] removeObserver:self];
+		return;
+	}
+	if (!lView && lCanRender)
+		[self setUpRenderer];
+
 	NSScreen *screen = self.window.screen;
 	self.animationTimeInterval = screen ? screen.minimumRefreshInterval : (1.0 / 60.0);
 	os_log(HSLog(), "#%u viewDidMoveToWindow window=%p windowFrame=%{public}@ screen=%{public}@ scale=%.1f "
@@ -233,6 +280,8 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 
 - (void)startAnimation
 {
+	if (!lView && lCanRender && self.window)
+		[self setUpRenderer];
     [super startAnimation];
 	os_log(HSLog(), "#%u startAnimation isAnimating=%d configuring=%d readyToDraw=%d window=%p",
 		   lInstanceID, self.isAnimating, lIsConfiguring, lSettings.readyToDraw, self.window);
@@ -281,7 +330,7 @@ static std::atomic<uint32_t> sNextInstanceID{1};
     [[NSColor blackColor] set];
     NSRectFill(rect);
 
-    if (lView == nil)
+    if (!lCanRender)
     {
 		if (lMainScreen || !lMainScreenOnly)
         {
@@ -395,7 +444,7 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 
 - (BOOL)hasConfigureSheet
 {
-    return (lView != nil);
+    return lCanRender;
 }
 
 

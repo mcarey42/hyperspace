@@ -66,8 +66,25 @@ tunnel::tunnel(splinePath* sp, int res){
 
 
 tunnel::~tunnel(){
+	// Inner levels included; the original freed only the outermost v/t arrays and never c.
+	for(int i=0; i<numSections; i++){
+		for(int j=0; j<=resolution; j++){
+			for(int k=0; k<=resolution; k++){
+				delete[] v[i][j][k];
+				delete[] t[i][j][k];
+				delete[] c[i][j][k];
+			}
+			delete[] v[i][j];
+			delete[] t[i][j];
+			delete[] c[i][j];
+		}
+		delete[] v[i];
+		delete[] t[i];
+		delete[] c[i];
+	}
 	delete[] v;
 	delete[] t;
+	delete[] c;
 }
 
 
