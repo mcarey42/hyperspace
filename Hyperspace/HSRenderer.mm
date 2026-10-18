@@ -171,13 +171,24 @@ public:
 	id<MTLSamplerState> samplerClamp = nil;
 	id<MTL4ArgumentTable> argTable = nil;
 
-	// Per-frame dynamic vertex buffer: a simple bump allocator reset every beginFrame.
-	id<MTLBuffer> vertexBuffer = nil;
-	size_t vertexBufferOffset = 0;
+	// Per-frame dynamic vertex buffers: a simple bump allocator reset every beginFrame, one
+	// buffer per frame-in-flight slot (indexed the same way as allocators[]), matching Apple's
+	// own Metal 4 samples. A single shared buffer rewound every frame let the CPU overwrite
+	// vertex data that up to kMaxFramesInFlight - 1 earlier frames were still reading on the
+	// GPU; a slot's buffer is only rewound after the same frameEvent wait that frees its
+	// allocator.
+	id<MTLBuffer> frameVertexBuffers[kMaxFramesInFlight] = {nil, nil, nil};
 
 	// Same bump-allocator scheme, for drawIndexedMesh's index data (goo's marching-cubes
 	// tiles, and later the starburst sphere).
-	id<MTLBuffer> indexBuffer = nil;
+	id<MTLBuffer> frameIndexBuffers[kMaxFramesInFlight] = {nil, nil, nil};
+
+	// Whichever buffers the current beginFrame/endFrame (or beginCausticFrame/endCausticFrame)
+	// pair is bump-allocating from. currentIndexBuffer is nil during caustic frames, which
+	// only ever draw non-indexed strips.
+	id<MTLBuffer> currentVertexBuffer = nil;
+	size_t vertexBufferOffset = 0;
+	id<MTLBuffer> currentIndexBuffer = nil;
 	size_t indexBufferOffset = 0;
 
 	// Fog uniforms, matching HSFogUniforms in Shaders.metal.
@@ -192,6 +203,21 @@ public:
 	// this always runs during initSaver() before the per-frame allocator has any work on it;
 	// kept alive forever (never reset) is fine — this only happens a couple dozen times total.
 	std::vector<id<MTL4CommandAllocator>> setupAllocators;
+	// Vertex buffers for caustic frames, kept apart from frameVertexBuffers[] so setup work
+	// never shares memory with frames that may still be in flight (initSaver() can run again
+	// after a stop/start while earlier frames are on the GPU). Each caustic frame is ~14.5MB
+	// of strip-expanded geometry and initSaver() commits several of them back to back
+	// without a CPU wait (see hsCommitSetupSubmission), so they can't share one rewound
+	// buffer either: each buffer is tagged with the setupEvent value of the submission that
+	// last read it, and is only reused once the GPU has signaled past that value. The pool
+	// is released once all setup work has completed (see hsReleaseIdleSetupBuffers).
+	struct SetupVertexBuffer
+	{
+		id<MTLBuffer> buffer;
+		uint64_t lastUseSetupValue;
+	};
+	std::vector<SetupVertexBuffer> setupVertexBuffers;
+	size_t currentSetupVertexBuffer = 0;
 	id<MTLTexture> causticTexture = nil;
 	int causticSize = 0;
 	// Signaled (cheaply, GPU-side, no CPU wait) after every one-off setup submission;
@@ -276,7 +302,7 @@ static void hsFlushSpriteBatch(HSRendererImpl *impl)
 		case HS_PIPELINE_CAUSTIC: pso = impl->causticPSO; break;
 	}
 
-	[impl->argTable setAddress:(impl->vertexBuffer.gpuAddress + impl->pendingSpriteStartOffset) atIndex:0];
+	[impl->argTable setAddress:(impl->currentVertexBuffer.gpuAddress + impl->pendingSpriteStartOffset) atIndex:0];
 	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
 	[impl->argTable setSamplerState:sampler.gpuResourceID atIndex:0];
 	for (int unit = 0; unit < 3; ++unit)
@@ -307,7 +333,7 @@ static void hsFlushMeshBatch(HSRendererImpl *impl)
 		return;
 	}
 
-	[impl->argTable setAddress:(impl->vertexBuffer.gpuAddress + impl->pendingMeshVertexStartOffset) atIndex:0];
+	[impl->argTable setAddress:(impl->currentVertexBuffer.gpuAddress + impl->pendingMeshVertexStartOffset) atIndex:0];
 	[impl->argTable setAddress:impl->fogBuffer.gpuAddress atIndex:1];
 	[impl->argTable setSamplerState:impl->samplerClamp.gpuResourceID atIndex:0];
 	for (int unit = 0; unit < 3; ++unit)
@@ -324,7 +350,7 @@ static void hsFlushMeshBatch(HSRendererImpl *impl)
 	[impl->encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
 								indexCount:impl->pendingMeshIndexCount
 								 indexType:MTLIndexTypeUInt32
-							   indexBuffer:(impl->indexBuffer.gpuAddress + impl->pendingMeshIndexStartOffset)
+							   indexBuffer:(impl->currentIndexBuffer.gpuAddress + impl->pendingMeshIndexStartOffset)
 							 indexBufferLength:impl->pendingMeshIndexCount * sizeof(uint32_t)];
 
 	impl->hasPendingMeshBatch = false;
@@ -508,14 +534,21 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	}
 	[argTable setSamplerState:samplerRepeat.gpuResourceID atIndex:0];
 
-	id<MTLBuffer> vertexBuffer = [device newBufferWithLength:kVertexBufferCapacity options:MTLResourceStorageModeShared];
-	vertexBuffer.label = @"HSRenderer vertex ring";
-	id<MTLBuffer> indexBuffer = [device newBufferWithLength:kIndexBufferCapacity options:MTLResourceStorageModeShared];
-	indexBuffer.label = @"HSRenderer index ring";
+	id<MTLBuffer> frameVertexBuffers[HSRendererImpl::kMaxFramesInFlight];
+	id<MTLBuffer> frameIndexBuffers[HSRendererImpl::kMaxFramesInFlight];
+	for (int i = 0; i < HSRendererImpl::kMaxFramesInFlight; ++i)
+	{
+		frameVertexBuffers[i] = [device newBufferWithLength:kVertexBufferCapacity options:MTLResourceStorageModeShared];
+		frameIndexBuffers[i] = [device newBufferWithLength:kIndexBufferCapacity options:MTLResourceStorageModeShared];
+		if (!frameVertexBuffers[i] || !frameIndexBuffers[i])
+			return false;
+		frameVertexBuffers[i].label = [NSString stringWithFormat:@"HSRenderer vertex ring %d", i];
+		frameIndexBuffers[i].label = [NSString stringWithFormat:@"HSRenderer index ring %d", i];
+		[residencySet addAllocation:frameVertexBuffers[i]];
+		[residencySet addAllocation:frameIndexBuffers[i]];
+	}
 	id<MTLBuffer> fogBuffer = [device newBufferWithLength:32 options:MTLResourceStorageModeShared];
 	fogBuffer.label = @"HSRenderer fog uniforms";
-	[residencySet addAllocation:vertexBuffer];
-	[residencySet addAllocation:indexBuffer];
 	[residencySet addAllocation:fogBuffer];
 	[residencySet commit];
 
@@ -528,11 +561,28 @@ bool HSRenderer::attachToView(MTKView *mtkView)
 	impl->samplerRepeat = samplerRepeat;
 	impl->samplerClamp = samplerClamp;
 	impl->argTable = argTable;
-	impl->vertexBuffer = vertexBuffer;
-	impl->indexBuffer = indexBuffer;
+	for (int i = 0; i < HSRendererImpl::kMaxFramesInFlight; ++i)
+	{
+		impl->frameVertexBuffers[i] = frameVertexBuffers[i];
+		impl->frameIndexBuffers[i] = frameIndexBuffers[i];
+	}
 	impl->fogBuffer = fogBuffer;
 
 	return true;
+}
+
+// Caustic setup buffers are only needed while initSaver() is generating textures; once the
+// GPU has signaled past the last setup submission, nothing can still be reading any of them,
+// so drop them (~16MB each) rather than keeping them for the lifetime of the renderer.
+// Non-blocking: just a signaledValue check, cheap enough to run every frame.
+static void hsReleaseIdleSetupBuffers(HSRendererImpl *impl)
+{
+	if (impl->setupVertexBuffers.empty() || impl->setupEvent.signaledValue < impl->setupEventValue)
+		return;
+	for (const auto &entry : impl->setupVertexBuffers)
+		[impl->residencySet removeAllocation:entry.buffer];
+	[impl->residencySet commit];
+	impl->setupVertexBuffers.clear();
 }
 
 bool HSRenderer::beginFrame()
@@ -568,7 +618,8 @@ bool HSRenderer::beginFrame()
 	// Wait for the GPU to actually finish the frame kMaxFramesInFlight iterations back (not
 	// just for its commit() to return) before reclaiming the allocator it used.
 	impl->frameNumber++;
-	id<MTL4CommandAllocator> allocator = impl->allocators[impl->frameNumber % HSRendererImpl::kMaxFramesInFlight];
+	const int slot = int(impl->frameNumber % HSRendererImpl::kMaxFramesInFlight);
+	id<MTL4CommandAllocator> allocator = impl->allocators[slot];
 	if (impl->frameNumber > HSRendererImpl::kMaxFramesInFlight)
 	{
 		BOOL signaled = [impl->frameEvent waitUntilSignaledValue:impl->frameNumber - HSRendererImpl::kMaxFramesInFlight timeoutMS:1000];
@@ -590,6 +641,7 @@ bool HSRenderer::beginFrame()
 		}
 	}
 	[allocator reset];
+	hsReleaseIdleSetupBuffers(impl);
 
 	// attachToView ran while the view was still 0x0 (before AppKit/SwiftUI ever gave it a
 	// real size), so the residency set it registered for the view's drawables then may not
@@ -617,6 +669,10 @@ bool HSRenderer::beginFrame()
 	[impl->encoder setFrontFacingWinding:MTLWindingCounterClockwise];
 	[impl->encoder setCullMode:MTLCullModeNone];
 	impl->currentCullMode = HS_CULL_NONE;
+	// Safe to rewind: this slot's buffers were last read by frame frameNumber -
+	// kMaxFramesInFlight, which the frameEvent wait above confirmed the GPU has finished.
+	impl->currentVertexBuffer = impl->frameVertexBuffers[slot];
+	impl->currentIndexBuffer = impl->frameIndexBuffers[slot];
 	impl->vertexBufferOffset = 0;
 	impl->indexBufferOffset = 0;
 	impl->hasPendingSpriteBatch = false;
@@ -651,6 +707,8 @@ void HSRenderer::endFrame()
 	impl->encoder = nil;
 	impl->commandBuffer = nil;
 	impl->drawable = nil;
+	impl->currentVertexBuffer = nil;
+	impl->currentIndexBuffer = nil;
 	impl->frameInProgress = false;
 }
 
@@ -915,7 +973,7 @@ void HSRenderer::end()
 		impl->hasPendingSpriteBatch = true;
 	}
 
-	float *dest = reinterpret_cast<float *>(static_cast<uint8_t *>(impl->vertexBuffer.contents) + impl->vertexBufferOffset);
+	float *dest = reinterpret_cast<float *>(static_cast<uint8_t *>(impl->currentVertexBuffer.contents) + impl->vertexBufferOffset);
 	const float *src = impl->vertexAccumulator.data();
 	for (uint32_t tri = 0; tri < triangleCount; ++tri)
 	{
@@ -949,7 +1007,7 @@ void HSRenderer::end()
 void HSRenderer::drawIndexedMesh(const float *interleavedNormalPosition, uint32_t vertexCount,
 								  const uint32_t *indices, uint32_t indexCount)
 {
-	if (vertexCount == 0 || indexCount == 0 || !impl->encoder)
+	if (vertexCount == 0 || indexCount == 0 || !impl->encoder || !impl->currentIndexBuffer)
 		return;
 
 	size_t vertexByteSize = size_t(vertexCount) * 14 * sizeof(float);
@@ -978,7 +1036,7 @@ void HSRenderer::drawIndexedMesh(const float *interleavedNormalPosition, uint32_
 		impl->hasPendingMeshBatch = true;
 	}
 
-	float *dest = reinterpret_cast<float *>(static_cast<uint8_t *>(impl->vertexBuffer.contents) + impl->vertexBufferOffset);
+	float *dest = reinterpret_cast<float *>(static_cast<uint8_t *>(impl->currentVertexBuffer.contents) + impl->vertexBufferOffset);
 	for (uint32_t i = 0; i < vertexCount; ++i)
 	{
 		const float *src = interleavedNormalPosition + i * 6;	// normal.xyz, position.xyz
@@ -994,7 +1052,7 @@ void HSRenderer::drawIndexedMesh(const float *interleavedNormalPosition, uint32_
 		v[10] = impl->currentColor[0]; v[11] = impl->currentColor[1]; v[12] = impl->currentColor[2]; v[13] = impl->currentColor[3];
 	}
 
-	uint32_t *destIndices = reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(impl->indexBuffer.contents) + impl->indexBufferOffset);
+	uint32_t *destIndices = reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(impl->currentIndexBuffer.contents) + impl->indexBufferOffset);
 	uint32_t baseVertex = impl->pendingMeshVertexCount;
 	for (uint32_t i = 0; i < indexCount; ++i)
 		destIndices[i] = indices[i] + baseVertex;
@@ -1162,7 +1220,34 @@ void HSRenderer::beginCausticFrame(int size)
 	[impl->encoder setFrontFacingWinding:MTLWindingCounterClockwise];
 	[impl->encoder setCullMode:MTLCullModeNone];
 	impl->currentCullMode = HS_CULL_NONE;
+
+	// Never a per-frame slot's buffer (frames may still be in flight if initSaver() is
+	// re-running after a stop/start), and never a setup buffer an earlier caustic frame
+	// committed but the GPU hasn't finished with yet (see setupVertexBuffers' comment).
+	// Checking signaledValue doesn't block, unlike waiting on it.
+	uint64_t setupDone = impl->setupEvent.signaledValue;
+	size_t index = impl->setupVertexBuffers.size();
+	for (size_t i = 0; i < impl->setupVertexBuffers.size(); ++i)
+	{
+		if (impl->setupVertexBuffers[i].lastUseSetupValue <= setupDone)
+		{
+			index = i;
+			break;
+		}
+	}
+	if (index == impl->setupVertexBuffers.size())
+	{
+		id<MTLBuffer> buffer = [impl->device newBufferWithLength:kVertexBufferCapacity options:MTLResourceStorageModeShared];
+		buffer.label = @"HSRenderer setup vertex buffer";
+		[impl->residencySet addAllocation:buffer];
+		[impl->residencySet commit];
+		impl->setupVertexBuffers.push_back({buffer, 0});
+	}
+	impl->currentSetupVertexBuffer = index;
+	impl->currentVertexBuffer = impl->setupVertexBuffers[index].buffer;
+	impl->currentIndexBuffer = nil;
 	impl->vertexBufferOffset = 0;
+	impl->indexBufferOffset = 0;
 	impl->hasPendingSpriteBatch = false;
 	impl->hasPendingMeshBatch = false;
 }
@@ -1179,12 +1264,14 @@ HSTextureRef HSRenderer::endCausticFrame()
 
 	[impl->commandBuffer endCommandBuffer];
 	hsCommitSetupSubmission(impl, impl->commandBuffer);
+	impl->setupVertexBuffers[impl->currentSetupVertexBuffer].lastUseSetupValue = impl->setupEventValue;
 
 	HSTextureRef ref = impl->nextTextureRef++;
 	impl->textures[ref] = impl->causticTexture;
 
 	impl->commandBuffer = nil;
 	impl->encoder = nil;
+	impl->currentVertexBuffer = nil;
 	impl->causticTexture = nil;
 	return ref;
 }
