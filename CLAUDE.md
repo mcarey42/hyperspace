@@ -77,8 +77,13 @@ preferred not to block on that). It is a standing manual step.
   Lifecycle lines are at default level; per-instance stats and layer-tree state every 2s are at
   debug level:
   `log stream --level debug --predicate 'subsystem == "com.reallyslick.Hyperspace"'`.
-  Frame, `initSaver` and animating intervals are signposts, so they show up in Instruments'
-  Points of Interest track. GPU-side errors are logged from `MTL4CommitOptions` feedback handlers.
+  `init`, `initSaver` and animating signposts show up in Instruments' Points of Interest track.
+  The per-frame interval is opt-in: set `HYPERSPACE_FRAME_SIGNPOSTS=1` in the environment (e.g.
+  the HyperspaceHost scheme). It's off by default because always-on frame signposts flood the
+  system log, and the dynamic-tracing category isn't enabled by xctrace's os_signpost
+  instrument. Instruments can't capture signposts from the sandboxed legacyScreenSaver host at
+  all, so profile in HyperspaceHost. GPU-side errors are logged from `MTL4CommitOptions`
+  feedback handlers.
 - **Detached views are never stopped or freed by the host.** legacyScreenSaver removes a view from
   its window when the preview changes or the saver ends, but never calls `stopAnimation`, and
   ScreenSaverView's animation timer keeps the view alive. Each instance used to hold ~220MB for

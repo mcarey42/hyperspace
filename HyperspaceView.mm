@@ -37,6 +37,7 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 {
 	uint32_t lInstanceID;
 	os_signpost_id_t lSignpostID;
+	os_signpost_id_t lFrameSignpostID;
 	CFAbsoluteTime lLastStatsTime;
 	HSFrameStats lLastStats;
 	uint64_t lAnimateCalls, lLastAnimateCalls;
@@ -69,6 +70,7 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 	{
 		lInstanceID = sNextInstanceID++;
 		lSignpostID = os_signpost_id_generate(HSSignpostLog());
+		lFrameSignpostID = os_signpost_id_generate(HSFrameSignpostLog());
 		os_log(HSLog(), "#%u init pid=%d frame=%{public}@ isPreview=%d", lInstanceID, getpid(),
 			   NSStringFromRect(frame), isPreview);
 		os_signpost_event_emit(HSSignpostLog(), lSignpostID, "init", "#%u %{public}@", lInstanceID, NSStringFromRect(frame));
@@ -384,10 +386,10 @@ static std::atomic<uint32_t> sNextInstanceID{1};
 	[self syncViewportWithDrawable];
 	if (!lRenderer->beginFrame())
 		return;
-	os_signpost_interval_begin(HSSignpostLog(), lSignpostID, "frame", "#%u", lInstanceID);
+	os_signpost_interval_begin(HSFrameSignpostLog(), lFrameSignpostID, "frame", "#%u", lInstanceID);
 	draw(&lSettings);
 	lRenderer->endFrame();
-	os_signpost_interval_end(HSSignpostLog(), lSignpostID, "frame", "#%u", lInstanceID);
+	os_signpost_interval_end(HSFrameSignpostLog(), lFrameSignpostID, "frame", "#%u", lInstanceID);
 	if (!lLoggedFirstPresent)
 	{
 		lLoggedFirstPresent = YES;
